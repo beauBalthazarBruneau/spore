@@ -26,10 +26,16 @@
       "Platform",
       "B2B SaaS"
     ],
-    "exclusions": [
-      "crypto",
-      "gambling"
-    ],
+    "exclusions": {
+      "companies": [],
+      "company_domains": [],
+      "title_keywords": ["intern", "sales", "account executive"],
+      "description_keywords": ["secret clearance", "on-site only"],
+      "industries": ["crypto", "gambling", "defense"],
+      "locations": [],
+      "seniority": ["junior", "principal"],
+      "visa_required": false
+    },
     "salary_min": 150000,
     "remote_pref": "hybrid"
   }

@@ -1,0 +1,16 @@
+[
+  { "name": "Anthropic", "ats_source": "greenhouse", "ats_slug": "anthropic" },
+  { "name": "Airtable", "ats_source": "greenhouse", "ats_slug": "airtable" },
+  { "name": "Figma", "ats_source": "greenhouse", "ats_slug": "figma" },
+  { "name": "Vercel", "ats_source": "greenhouse", "ats_slug": "vercel" },
+  { "name": "Discord", "ats_source": "greenhouse", "ats_slug": "discord" },
+  { "name": "GitLab", "ats_source": "greenhouse", "ats_slug": "gitlab" },
+  { "name": "Databricks", "ats_source": "greenhouse", "ats_slug": "databricks" },
+  { "name": "Instabase", "ats_source": "greenhouse", "ats_slug": "instabase" },
+  { "name": "Brex", "ats_source": "greenhouse", "ats_slug": "brex" },
+  { "name": "Mercury", "ats_source": "greenhouse", "ats_slug": "mercury" },
+  { "name": "Netflix", "ats_source": "lever", "ats_slug": "netflix" },
+  { "name": "Spotify", "ats_source": "lever", "ats_slug": "spotify" },
+  { "name": "Palantir", "ats_source": "lever", "ats_slug": "palantir" },
+  { "name": "Tandem", "ats_source": "ashby", "ats_slug": "tandem" }
+]

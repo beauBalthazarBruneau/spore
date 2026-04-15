@@ -11,6 +11,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <nav className="flex gap-4 px-6 py-3 border-b border-zinc-800 text-sm">
           <Link href="/swipe" className="hover:text-white">Swipe</Link>
           <Link href="/board" className="hover:text-white">Board</Link>
+          <Link href="/companies" className="hover:text-white">Companies</Link>
           <Link href="/profile" className="hover:text-white">Profile</Link>
           <Link href="/stats" className="hover:text-white">Stats</Link>
         </nav>
