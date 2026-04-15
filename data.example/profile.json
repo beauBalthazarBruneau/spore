@@ -1,0 +1,36 @@
+{
+  "full_name": "Jane Doe",
+  "email": "jane@example.com",
+  "phone": "(555) 555-0100",
+  "location": "New York, NY",
+  "links_json": {
+    "linkedin": "https://linkedin.com/in/jane-doe",
+    "github": "https://github.com/jane-doe"
+  },
+  "base_resume_path": "data/base/resume.md",
+  "preferences_json": {
+    "remote_ok": true
+  },
+  "criteria_json": {
+    "titles": [
+      "Product Manager",
+      "Senior Product Manager",
+      "Lead Product Manager"
+    ],
+    "locations": [
+      "New York, NY",
+      "Remote"
+    ],
+    "keywords": [
+      "AI",
+      "Platform",
+      "B2B SaaS"
+    ],
+    "exclusions": [
+      "crypto",
+      "gambling"
+    ],
+    "salary_min": 150000,
+    "remote_pref": "hybrid"
+  }
+}

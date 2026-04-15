@@ -1,0 +1,20 @@
+{
+  "name": "autoapply",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": ["frontend", "mcp"],
+  "scripts": {
+    "seed": "tsx scripts/seed.ts",
+    "import-resume-bank": "tsx scripts/import-resume-bank.ts",
+    "dev": "npm --workspace frontend run dev"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0"
+  }
+}
