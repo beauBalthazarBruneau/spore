@@ -1,11 +1,12 @@
 export type JobStatus =
+  | "fetched"
   | "new" | "approved" | "rejected" | "skipped"
   | "needs_tailoring" | "tailoring" | "tailored" | "ready_to_apply"
   | "applied" | "interview_invite" | "declined" | "on_hold";
 
 export const SWIPE_STATUS: JobStatus = "new";
 export const BOARD_COLUMNS: JobStatus[] = [
-  "needs_tailoring", "tailoring", "tailored", "ready_to_apply", "applied", "interview_invite",
+  "fetched", "new", "needs_tailoring", "tailoring", "tailored", "ready_to_apply", "applied", "interview_invite",
 ];
 export const BOARD_SIDE: JobStatus[] = ["declined", "on_hold"];
 

@@ -50,9 +50,11 @@ CREATE TABLE IF NOT EXISTS jobs (
   match_explanation TEXT,
 
   -- lifecycle: flattened from resume_bank postings + applications
-  -- Swipe values:  new | approved | rejected | skipped
-  -- Board values:  needs_tailoring | tailoring | tailored | ready_to_apply | applied | interview_invite | declined | on_hold
+  -- Pre-Swipe:    fetched (passed hard filters, not yet Claude-scored)
+  -- Swipe values: new | approved | rejected | skipped
+  -- Board values: needs_tailoring | tailoring | tailored | ready_to_apply | applied | interview_invite | declined | on_hold
   status TEXT NOT NULL DEFAULT 'new' CHECK (status IN (
+    'fetched',
     'new','approved','rejected','skipped',
     'needs_tailoring','tailoring','tailored','ready_to_apply','applied','interview_invite','declined','on_hold'
   )),
