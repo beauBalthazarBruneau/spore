@@ -5,8 +5,9 @@
 //   tsx scripts/fetch-candidates.ts [--limit N] > candidates.json
 //
 // Side effects: postings that fail hard filters are inserted with status='rejected'
-// so we don't re-score them next run. Survivors are NOT inserted — Claude scores
-// them and then calls upsert-scored.ts to write them as status='new'.
+// so we don't re-score them next run. Survivors are inserted with status='fetched'
+// and emitted to stdout; Claude scores them and calls upsert-scored.ts to
+// promote them to 'new' (approved) or 'rejected' (below threshold).
 
 import { getDb } from "../mcp/db";
 import { sources } from "../mcp/sources";
@@ -71,12 +72,17 @@ async function main() {
   let dupes = 0;
 
   for (const p of raw) {
-    // dedup first — cheap
+    // dedup first — cheap. Unscored ('fetched') rows are re-emitted so Claude can score them.
     const existing = db
-      .prepare(`SELECT id FROM jobs WHERE (source=? AND source_job_id=?) OR url=? LIMIT 1`)
-      .get(p.source, p.source_job_id, p.url);
+      .prepare(`SELECT id, status FROM jobs WHERE (source=? AND source_job_id=?) OR url=? LIMIT 1`)
+      .get(p.source, p.source_job_id, p.url) as { id: number; status: string } | undefined;
     if (existing) {
-      dupes++;
+      if (existing.status === "fetched") {
+        candidates.push(p);
+        if (candidates.length >= limit) break;
+      } else {
+        dupes++;
+      }
       continue;
     }
 
@@ -86,6 +92,7 @@ async function main() {
       rejected++;
       continue;
     }
+    upsertJob(db, p, { status: "fetched" });
     candidates.push(p);
     if (candidates.length >= limit) break;
   }

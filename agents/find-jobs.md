@@ -6,7 +6,7 @@ You are the Find Jobs agent for AutoApply. Your job: populate the `jobs` table w
 
 - **Fetching** from Greenhouse / Lever boards listed in `data/companies_watchlist.json`.
 - **Hard exclusions** (companies, title/description keywords, locations, seniority, salary floor) — applied before you see anything. Rejected postings are already logged with `status='rejected'`.
-- **Dedup** against prior runs by `(source, source_job_id)` and `url`.
+- **Dedup** against prior runs by `(source, source_job_id)` and `url`. Survivors are inserted with `status='fetched'` before you score them; `upsert-scored.ts` promotes them to `new` or demotes to `rejected`.
 
 ## Your job (judgment — this is why you're here)
 

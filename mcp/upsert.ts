@@ -63,3 +63,30 @@ export function upsertJob(
     );
   return { id: Number(info.lastInsertRowid), inserted: true };
 }
+
+// Upsert a scored posting: updates an existing row (e.g. status='fetched') in place,
+// or inserts a fresh row if none exists. Returns whether a row was inserted.
+export function upsertScoredJob(
+  db: Database.Database,
+  p: RawPosting,
+  opts: UpsertOpts & { status: string; score: number },
+): { id: number; inserted: boolean } {
+  const existing = db
+    .prepare(
+      `SELECT id FROM jobs WHERE (source = ? AND source_job_id = ?) OR url = ? LIMIT 1`,
+    )
+    .get(p.source, p.source_job_id, p.url) as { id: number } | undefined;
+  if (existing) {
+    db.prepare(
+      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?, rejection_reason = ? WHERE id = ?`,
+    ).run(
+      opts.status,
+      opts.score,
+      opts.match_explanation ?? null,
+      opts.rejection_reason ?? opts.decline_reason ?? null,
+      existing.id,
+    );
+    return { id: existing.id, inserted: false };
+  }
+  return upsertJob(db, p, opts);
+}

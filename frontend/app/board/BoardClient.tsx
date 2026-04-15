@@ -4,6 +4,8 @@ import { DndContext, DragEndEvent, PointerSensor, useDraggable, useDroppable, us
 import { BOARD_COLUMNS, BOARD_SIDE, type Job, type JobStatus } from "@/lib/types";
 
 const COLUMN_LABELS: Record<JobStatus, string> = {
+  fetched: "Fetched",
+  new: "To Review",
   needs_tailoring: "Needs Tailoring",
   tailoring: "Tailoring",
   tailored: "Tailored",
@@ -12,7 +14,7 @@ const COLUMN_LABELS: Record<JobStatus, string> = {
   interview_invite: "Interview Invite",
   declined: "Declined",
   on_hold: "On Hold",
-  new: "", approved: "", rejected: "", skipped: "",
+  approved: "", rejected: "", skipped: "",
 };
 
 export default function BoardClient({ initialJobs }: { initialJobs: Job[] }) {

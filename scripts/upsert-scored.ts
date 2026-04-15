@@ -5,7 +5,7 @@
 //   cat scored.json | tsx scripts/upsert-scored.ts [--threshold 60]
 
 import { getDb } from "../mcp/db";
-import { upsertJob } from "../mcp/upsert";
+import { upsertScoredJob } from "../mcp/upsert";
 import type { RawPosting } from "../mcp/sources/types";
 
 interface Scored extends RawPosting {
@@ -40,19 +40,21 @@ async function main() {
   const input = await readStdin();
   const scored: Scored[] = JSON.parse(input);
 
-  let inserted = 0;
-  let skipped = 0;
+  let promoted = 0;
+  let declined = 0;
   for (const s of scored) {
     const status = s.score >= threshold ? "new" : "rejected";
-    const { inserted: ok } = upsertJob(db, s, {
+    upsertScoredJob(db, s, {
       status,
       score: s.score,
       match_explanation: s.match_explanation,
       rejection_reason: status === "rejected" ? s.decline_reason ?? `score ${s.score} < ${threshold}` : undefined,
     });
-    if (ok && status === "new") inserted++;
-    else skipped++;
+    if (status === "new") promoted++;
+    else declined++;
   }
+  const inserted = promoted;
+  const skipped = declined;
 
   db.prepare(
     `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES (?,?,?,?,?)`,
