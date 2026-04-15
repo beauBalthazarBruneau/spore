@@ -41,6 +41,22 @@ function main() {
   const insertCompany = db.prepare(`INSERT INTO companies (id, name) VALUES (?, ?)`);
   for (const c of companies) insertCompany.run(c.id, c.name);
 
+  // Watchlist — companies whose ATS boards find-jobs should scan.
+  const watchlistPath = resolve(EXAMPLE, "watchlist.seed.json");
+  if (existsSync(watchlistPath)) {
+    const watchlist = JSON.parse(readFileSync(watchlistPath, "utf8")) as Array<{
+      name: string;
+      ats_source: string;
+      ats_slug: string;
+    }>;
+    const upsertWatch = db.prepare(`
+      INSERT INTO companies (name, ats_source, ats_slug, watching) VALUES (?, ?, ?, 1)
+      ON CONFLICT(name) DO UPDATE SET ats_source = excluded.ats_source, ats_slug = excluded.ats_slug, watching = 1
+    `);
+    for (const w of watchlist) upsertWatch.run(w.name, w.ats_source, w.ats_slug);
+    console.log(`Watchlist: ${watchlist.length} companies marked watching=1.`);
+  }
+
   const insertJob = db.prepare(`
     INSERT INTO jobs (
       source, url, title, company_id, location, salary_range,
