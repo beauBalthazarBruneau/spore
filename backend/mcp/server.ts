@@ -14,28 +14,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { getDb } from "../db";
 import { sources } from "../sources";
-import { upsertJob, upsertScoredJob } from "../upsert";
-import { applyHardFilters, type Criteria } from "../filters";
+import { upsertJob } from "../upsert";
 import type { RawPosting } from "../sources/types";
 
 const ATS_SOURCE = z.enum(["greenhouse", "lever", "ashby", "rippling"]);
-
-const RAW_POSTING_SCHEMA = z.object({
-  source: z.string(),
-  source_job_id: z.string(),
-  url: z.string(),
-  title: z.string(),
-  company_name: z.string(),
-  company_domain: z.string().optional(),
-  location: z.string().optional(),
-  remote: z.string().optional(),
-  salary_min: z.number().optional(),
-  salary_max: z.number().optional(),
-  salary_range: z.string().optional(),
-  posted_at: z.string().optional(),
-  description: z.string().optional(),
-  raw: z.unknown().optional(),
-});
 
 function ok(data: unknown) {
   return {
@@ -183,97 +165,36 @@ server.registerTool(
   },
 );
 
-// ---------- Find-jobs pipeline ----------
+// ---------- Scoring queue ----------
+// Fetching is now handled by scripts/orchestrate.ts + backend/fetchers/*. The
+// scoring agent picks up work via list_jobs({ status: 'fetched' }) and writes
+// results via upsert_scored (id-based update).
 
 server.registerTool(
-  "fetch_candidates",
+  "list_jobs",
   {
     description:
-      "Fetch postings from every watching=1 company, dedup against existing rows, apply hard exclusions from profile.criteria_json, and insert survivors with status='fetched'. Returns the candidate array (RawPosting[]) for the agent to score.",
+      "List jobs from the DB with a flat { id, title, company_name, url, location, description, ... } shape. Filter by status (commonly 'fetched' for the scoring queue). Ordered by discovered_at DESC. Omit status to list all.",
     inputSchema: {
-      limit: z.number().int().positive().optional().describe("Cap on candidates returned (after dedup + filters)"),
+      status: z.string().optional().describe("e.g. 'fetched', 'new', 'rejected'"),
+      limit: z.number().int().positive().optional(),
     },
   },
   async (args) => {
     const db = getDb();
-    const profileRow = db.prepare(`SELECT criteria_json FROM profile WHERE id = 1`).get() as
-      | { criteria_json: string | null }
-      | undefined;
-    const criteria: Criteria = profileRow?.criteria_json ? JSON.parse(profileRow.criteria_json) : {};
-
-    const watched = db
-      .prepare(
-        `SELECT name, ats_source, ats_slug FROM companies
-          WHERE watching = 1 AND ats_source IS NOT NULL AND ats_slug IS NOT NULL`,
-      )
-      .all() as Array<{ name: string; ats_source: string; ats_slug: string }>;
-
-    const bySource = new Map<string, string[]>();
-    for (const c of watched) {
-      const arr = bySource.get(c.ats_source) ?? [];
-      arr.push(c.ats_slug);
-      bySource.set(c.ats_source, arr);
-    }
-
-    const raw: RawPosting[] = [];
-    const fetchErrors: Array<{ source: string; error: string }> = [];
-    for (const [source, slugs] of bySource) {
-      const adapter = sources[source];
-      if (!adapter) {
-        fetchErrors.push({ source, error: "unknown ats_source" });
-        continue;
-      }
-      try {
-        raw.push(...(await adapter.search({ companies: slugs })));
-      } catch (e) {
-        fetchErrors.push({ source, error: (e as Error).message });
-      }
-    }
-
-    const slugToName = new Map<string, string>();
-    for (const c of watched) slugToName.set(`${c.ats_source}:${c.ats_slug}`, c.name);
-    for (const p of raw) {
-      const canonical = slugToName.get(`${p.source}:${p.company_name}`);
-      if (canonical) p.company_name = canonical;
-    }
-
-    const limit = args.limit ?? Infinity;
-    const candidates: RawPosting[] = [];
-    let rejected = 0;
-    let dupes = 0;
-
-    for (const p of raw) {
-      const existing = db
-        .prepare(`SELECT id, status FROM jobs WHERE (source=? AND source_job_id=?) OR url=? LIMIT 1`)
-        .get(p.source, p.source_job_id, p.url) as { id: number; status: string } | undefined;
-      if (existing) {
-        if (existing.status === "fetched") {
-          candidates.push(p);
-          if (candidates.length >= limit) break;
-        } else {
-          dupes++;
-        }
-        continue;
-      }
-      const filter = applyHardFilters(p, criteria);
-      if (!filter.passed) {
-        upsertJob(db, p, { status: "rejected", rejection_reason: filter.reason });
-        rejected++;
-        continue;
-      }
-      upsertJob(db, p, { status: "fetched" });
-      candidates.push(p);
-      if (candidates.length >= limit) break;
-    }
-
-    return ok({
-      fetched: raw.length,
-      dupes,
-      rejected,
-      candidates_count: candidates.length,
-      fetch_errors: fetchErrors,
-      candidates,
-    });
+    const limitClause = args.limit ? `LIMIT ${args.limit}` : "";
+    const select = `
+      SELECT j.id, j.title, c.name AS company_name, j.url, j.source, j.source_job_id,
+             j.location, j.remote, j.salary_min, j.salary_max, j.salary_range,
+             j.posted_at, j.description, j.score, j.match_explanation, j.status
+        FROM jobs j LEFT JOIN companies c ON c.id = j.company_id
+    `;
+    const rows = args.status
+      ? db
+          .prepare(`${select} WHERE j.status = ? ORDER BY j.discovered_at DESC ${limitClause}`)
+          .all(args.status)
+      : db.prepare(`${select} ORDER BY j.discovered_at DESC ${limitClause}`).all();
+    return ok({ count: rows.length, jobs: rows });
   },
 );
 
@@ -281,35 +202,39 @@ server.registerTool(
   "upsert_scored",
   {
     description:
-      "Promote/demote candidates after scoring. score >= threshold becomes status='new' (ready for Swipe); below becomes status='rejected'. Logs a find_jobs_run event.",
+      "Update-by-id: promote/demote jobs after scoring. score >= threshold sets status='new' (ready for Swipe); below sets status='rejected' with decline_reason (falls back to 'score N < threshold'). Logs a score_jobs_run event. Operates on existing rows — does not insert.",
     inputSchema: {
       threshold: z.number().int().optional().describe("Default 60"),
       items: z
         .array(
-          RAW_POSTING_SCHEMA.extend({
+          z.object({
+            id: z.number().int(),
             score: z.number(),
             match_explanation: z.string().optional(),
             decline_reason: z.string().optional(),
           }),
         )
-        .describe("Scored postings — same shape returned by fetch_candidates plus score/match_explanation/decline_reason"),
+        .describe("One entry per job id returned by list_jobs"),
     },
   },
   async (args) => {
     const db = getDb();
     const threshold = args.threshold ?? 60;
+    const update = db.prepare(
+      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?, rejection_reason = ? WHERE id = ?`,
+    );
     let promoted = 0;
     let declined = 0;
+    const not_found: number[] = [];
     for (const s of args.items) {
       const status = s.score >= threshold ? "new" : "rejected";
-      const posting = { ...s, raw: s.raw ?? {} } as RawPosting;
-      upsertScoredJob(db, posting, {
-        status,
-        score: s.score,
-        match_explanation: s.match_explanation,
-        rejection_reason:
-          status === "rejected" ? s.decline_reason ?? `score ${s.score} < ${threshold}` : undefined,
-      });
+      const rejection_reason =
+        status === "rejected" ? s.decline_reason ?? `score ${s.score} < ${threshold}` : null;
+      const info = update.run(status, s.score, s.match_explanation ?? null, rejection_reason, s.id);
+      if (info.changes === 0) {
+        not_found.push(s.id);
+        continue;
+      }
       if (status === "new") promoted++;
       else declined++;
     }
@@ -318,11 +243,11 @@ server.registerTool(
     ).run(
       "system",
       0,
-      "find_jobs_run",
+      "score_jobs_run",
       "claude",
-      JSON.stringify({ total: args.items.length, inserted: promoted, skipped: declined, threshold }),
+      JSON.stringify({ total: args.items.length, promoted, declined, threshold, not_found: not_found.length }),
     );
-    return ok({ total: args.items.length, inserted: promoted, skipped: declined, threshold });
+    return ok({ total: args.items.length, promoted, declined, threshold, not_found });
   },
 );
 

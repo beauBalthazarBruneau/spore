@@ -125,6 +125,6 @@ Agent loop:
 ## First milestone
 1. `backend/sources/greenhouse.ts` + `lever.ts` with a shared `RawPosting` type.
 2. `mcp/tools/search_board.ts`, `upsert_job.ts` (with hard filters + dedup).
-3. `.claude/agents/find-jobs.md` — prompt with rubric, loop instructions, target=10.
+3. `.claude/agents/score-jobs.md` — prompt with rubric, loop instructions, target=10.
 4. Seed `data/companies_watchlist.yaml` with ~30 companies.
 5. Dry run; tune threshold; then wire to cron.
