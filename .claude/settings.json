@@ -7,6 +7,7 @@
       "mcp__spore__get_profile",
       "mcp__spore__fetch_candidates",
       "mcp__spore__upsert_scored",
+      "mcp__spore__add_jobs",
       "WebSearch",
       "WebFetch(domain:boards.greenhouse.io)",
       "WebFetch(domain:job-boards.greenhouse.io)",

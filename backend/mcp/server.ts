@@ -326,6 +326,95 @@ server.registerTool(
   },
 );
 
+// ---------- Manual job add (bypasses the find-jobs scoring loop) ----------
+
+server.registerTool(
+  "add_jobs",
+  {
+    description:
+      "Insert one or more job postings the user is manually adding (from URLs, screenshots, or pasted role descriptions). Auto-creates the company by name (case-insensitive) if it doesn't exist — the new company row has no ATS info and watching=0. Dedup is on (source, source_job_id) OR url, so the same URL pasted twice is a no-op. Default status is 'new' (lands in the Swipe queue).",
+    inputSchema: {
+      status: z
+        .enum(["new", "approved", "fetched", "needs_tailoring"])
+        .optional()
+        .describe("Default 'new' (Swipe queue). 'approved' auto-promotes to 'needs_tailoring' on the Board."),
+      items: z.array(
+        z.object({
+          title: z.string(),
+          company_name: z.string(),
+          url: z.string().describe("Required — used as the dedup key when source_job_id is absent"),
+          source: z
+            .string()
+            .optional()
+            .describe(
+              "Default 'manual'. Use 'greenhouse'|'lever'|'ashby'|'rippling' if the URL is from a known ATS so future fetch_candidates runs dedup against the same job.",
+            ),
+          source_job_id: z.string().optional().describe("Falls back to url if not provided"),
+          description: z.string().optional(),
+          location: z.string().optional(),
+          remote: z.string().optional(),
+          salary_min: z.number().optional(),
+          salary_max: z.number().optional(),
+          salary_range: z.string().optional(),
+          posted_at: z.string().optional(),
+          company_domain: z.string().optional(),
+        }),
+      ),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const status = args.status ?? "new";
+    let inserted = 0;
+    let skipped = 0;
+    const results: Array<{
+      title: string;
+      company: string;
+      id: number;
+      inserted: boolean;
+      new_company: boolean;
+      skip_reason?: string;
+    }> = [];
+
+    for (const item of args.items) {
+      const companyExisted = !!db
+        .prepare(`SELECT 1 FROM companies WHERE name = ? COLLATE NOCASE`)
+        .get(item.company_name);
+
+      const posting: RawPosting = {
+        source: item.source ?? "manual",
+        source_job_id: item.source_job_id ?? item.url,
+        url: item.url,
+        title: item.title,
+        company_name: item.company_name,
+        company_domain: item.company_domain,
+        location: item.location,
+        remote: item.remote,
+        salary_min: item.salary_min,
+        salary_max: item.salary_max,
+        salary_range: item.salary_range,
+        posted_at: item.posted_at,
+        description: item.description,
+        raw: item,
+      };
+
+      const result = upsertJob(db, posting, { status });
+      results.push({
+        title: item.title,
+        company: item.company_name,
+        id: result.id,
+        inserted: result.inserted,
+        new_company: result.inserted && !companyExisted,
+        skip_reason: result.inserted ? undefined : "duplicate",
+      });
+      if (result.inserted) inserted++;
+      else skipped++;
+    }
+
+    return ok({ inserted, skipped, status, results });
+  },
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
