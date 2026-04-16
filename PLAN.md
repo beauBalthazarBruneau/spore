@@ -73,13 +73,13 @@ All pages hit Next.js route handlers that query SQLite directly (same file the M
 - `.gitignore` — add `data/`
 - `data.example/` — seed fake `profile.json`, `base/resume.md`, sample jobs
 - `mcp/` — MCP server package (schema migrations + tool handlers)
-- `mcp/schema.sql` — DDL for the tables above
+- `backend/schema.sql` — DDL for the tables above
 - `mcp/pdf.ts` — markdown → PDF renderer (`md-to-pdf` or headless Chromium via `puppeteer`)
 - `agents/` — markdown instructions per agent (find-jobs.md, tailor-resume.md, submit.md, network.md, interview-prep.md)
 - `frontend/` — Next.js app
 
 ## Verification (once implemented)
-- `sqlite3 data/autoapply.db < mcp/schema.sql` creates all tables; `PRAGMA foreign_keys=ON;` enforced.
+- `sqlite3 data/autoapply.db < backend/schema.sql` creates all tables; `PRAGMA foreign_keys=ON;` enforced.
 - MCP server boots and `tools/list` returns the tool surface above.
 - Fresh clone → `cp -r data.example data && npm run mcp` → agent can `list_jobs` and get the seeded rows.
 - End-to-end smoke: Find Jobs agent against a mocked source populates `jobs`; Tailor agent writes `resume_md` on a job row; `render_pdf` populates `resume_pdf` BLOB; frontend API route streams the PDF with correct mime type.

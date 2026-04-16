@@ -6,7 +6,7 @@
  */
 import { readFileSync, cpSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { getDb } from "../mcp/db";
+import { getDb } from "../backend/db";
 
 const ROOT = resolve(__dirname, "..");
 const EXAMPLE = resolve(ROOT, "data.example");

@@ -9,7 +9,7 @@ import type { Job, JobStatus } from "./types";
 // Frontend runs from ./frontend so the repo root is one level up.
 const REPO_ROOT = resolve(process.cwd(), "..");
 const DB_PATH = process.env.AUTOAPPLY_DB ?? resolve(REPO_ROOT, "data/autoapply.db");
-const SCHEMA_PATH = resolve(REPO_ROOT, "mcp/schema.sql");
+const SCHEMA_PATH = resolve(REPO_ROOT, "backend/schema.sql");
 
 declare global {
   // eslint-disable-next-line no-var

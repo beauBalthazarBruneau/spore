@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS companies (
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
   domain TEXT,
   linkedin_url TEXT,
-  ats_source TEXT,                        -- 'greenhouse' | 'lever' | 'ashby' | null (null = manually tracked)
+  ats_source TEXT,                        -- 'greenhouse' | 'lever' | 'ashby' | 'rippling' | null (null = manually tracked)
   ats_slug TEXT,                          -- board identifier on that ATS
   watching INTEGER NOT NULL DEFAULT 0,    -- 1 = include in scheduled find-jobs fetch
   archived INTEGER NOT NULL DEFAULT 0,    -- 1 = hidden from default companies view

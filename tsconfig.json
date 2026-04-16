@@ -9,6 +9,6 @@
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["mcp/**/*", "scripts/**/*"],
+  "include": ["backend/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "frontend"]
 }

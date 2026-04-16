@@ -49,7 +49,7 @@ Yes — build them. Generic scraping via Claude is slow, expensive, and brittle 
 **Tier 3 (gated / ToS-sensitive):**
 - **LinkedIn, Indeed** — defer. Logged-in scraping is a rabbit hole and violates ToS. Revisit with user-supplied session cookies later, or skip.
 
-Each scraper: `search(query, criteria) → RawPosting[]` with a normalized shape. Keep them small; one file per source under `mcp/sources/`.
+Each scraper: `search(query, criteria) → RawPosting[]` with a normalized shape. Keep them small; one file per source under `backend/sources/`.
 
 **Company list for GH/Lever/Ashby**: seed a `companies_watchlist` file (yaml) the user edits. Claude can suggest additions from criteria.
 
@@ -123,8 +123,8 @@ Agent loop:
 - LinkedIn — worth the ToS / auth pain, or skip permanently?
 
 ## First milestone
-1. `mcp/sources/greenhouse.ts` + `lever.ts` with a shared `RawPosting` type.
+1. `backend/sources/greenhouse.ts` + `lever.ts` with a shared `RawPosting` type.
 2. `mcp/tools/search_board.ts`, `upsert_job.ts` (with hard filters + dedup).
-3. `agents/find-jobs.md` — prompt with rubric, loop instructions, target=10.
+3. `.claude/agents/find-jobs.md` — prompt with rubric, loop instructions, target=10.
 4. Seed `data/companies_watchlist.yaml` with ~30 companies.
 5. Dry run; tune threshold; then wire to cron.

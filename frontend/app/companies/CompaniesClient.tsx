@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { CompanyRow } from "@/lib/db";
 
-const ATS_OPTIONS = ["", "greenhouse", "lever", "ashby"];
+const ATS_OPTIONS = ["", "greenhouse", "lever", "ashby", "rippling"];
 
 function boardUrl(c: CompanyRow): string | null {
   if (!c.ats_source || !c.ats_slug) return null;
