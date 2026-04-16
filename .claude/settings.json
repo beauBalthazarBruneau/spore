@@ -1,0 +1,20 @@
+{
+  "enabledMcpjsonServers": ["spore"],
+  "permissions": {
+    "allow": [
+      "mcp__spore__upsert_company",
+      "mcp__spore__probe_ats",
+      "mcp__spore__get_profile",
+      "mcp__spore__fetch_candidates",
+      "mcp__spore__upsert_scored",
+      "WebSearch",
+      "WebFetch(domain:boards.greenhouse.io)",
+      "WebFetch(domain:job-boards.greenhouse.io)",
+      "WebFetch(domain:jobs.lever.co)",
+      "WebFetch(domain:api.lever.co)",
+      "WebFetch(domain:jobs.ashbyhq.com)",
+      "WebFetch(domain:api.ashbyhq.com)",
+      "WebFetch(domain:ats.rippling.com)"
+    ]
+  }
+}
