@@ -2,7 +2,10 @@ import "./globals.css";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export const metadata = { title: "AutoApply" };
+export const metadata = {
+  title: "Spore",
+  icons: { icon: "/favicon.png" },
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
