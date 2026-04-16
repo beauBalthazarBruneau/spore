@@ -12,7 +12,7 @@ Two modes — pick based on the user's request:
 
 ## How companies are stored
 
-The `companies` table (see `mcp/schema.sql`) keys on `name` (case-insensitive unique). The fields that matter:
+The `companies` table (see `backend/schema.sql`) keys on `name` (case-insensitive unique). The fields that matter:
 - `ats_source` — `greenhouse` | `lever` | `ashby` | `rippling` | `null` (manual tracking only)
 - `ats_slug` — the company's board identifier on that ATS
 - `watching` — `1` means the find-jobs agent will pull jobs from this company on every run

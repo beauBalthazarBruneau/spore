@@ -3,8 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "workspaces": [
-    "frontend",
-    "mcp"
+    "frontend"
   ],
   "scripts": {
     "seed": "tsx scripts/seed.ts",

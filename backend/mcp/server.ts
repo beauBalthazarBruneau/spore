@@ -7,16 +7,16 @@
 //   fetch_candidates  — run the find-jobs fetch+hard-filter+insert pipeline, return candidates
 //   upsert_scored     — promote/demote candidates after the agent has scored them
 //
-// Run via: npx tsx mcp/server.ts (registered in .mcp.json)
+// Run via: npx tsx backend/mcp/server.ts (registered in .mcp.json)
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { getDb } from "./db";
-import { sources } from "./sources";
-import { upsertJob, upsertScoredJob } from "./upsert";
-import { applyHardFilters, type Criteria } from "./filters";
-import type { RawPosting } from "./sources/types";
+import { getDb } from "../db";
+import { sources } from "../sources";
+import { upsertJob, upsertScoredJob } from "../upsert";
+import { applyHardFilters, type Criteria } from "../filters";
+import type { RawPosting } from "../sources/types";
 
 const ATS_SOURCE = z.enum(["greenhouse", "lever", "ashby", "rippling"]);
 

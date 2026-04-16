@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 
 const REPO_ROOT = resolve(__dirname, "..");
 const DB_PATH = process.env.AUTOAPPLY_DB ?? resolve(REPO_ROOT, "data/autoapply.db");
-const SCHEMA_PATH = resolve(REPO_ROOT, "mcp/schema.sql");
+const SCHEMA_PATH = resolve(REPO_ROOT, "backend/schema.sql");
 
 let singleton: Database.Database | null = null;
 

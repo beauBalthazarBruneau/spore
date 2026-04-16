@@ -2,7 +2,7 @@
   "mcpServers": {
     "spore": {
       "command": "npx",
-      "args": ["-y", "tsx", "mcp/server.ts"]
+      "args": ["-y", "tsx", "backend/mcp/server.ts"]
     }
   }
 }

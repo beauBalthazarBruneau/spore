@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sources } from "../../../../../mcp/sources";
+import { sources } from "../../../../../backend/sources";
 
 export const dynamic = "force-dynamic";
 
