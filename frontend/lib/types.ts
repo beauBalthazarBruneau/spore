@@ -1,3 +1,30 @@
+export type Profile = {
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  links_json: Record<string, string>;
+  base_resume_md: string | null;
+  preferences_json: Record<string, unknown>;
+  criteria_json: {
+    titles?: string[];
+    locations?: string[];
+    keywords?: string[];
+    exclusions?: {
+      companies?: string[];
+      company_domains?: string[];
+      title_keywords?: string[];
+      description_keywords?: string[];
+      industries?: string[];
+      locations?: string[];
+      seniority?: string[];
+      visa_required?: boolean;
+    };
+    salary_min?: number;
+    remote_pref?: string;
+  };
+};
+
 export type JobStatus =
   | "fetched"
   | "new" | "approved" | "rejected" | "skipped"

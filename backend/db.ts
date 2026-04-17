@@ -34,6 +34,16 @@ function migrate(db: Database.Database) {
   const jobColNames = new Set(jobCols.map((c) => c.name));
   if (!jobColNames.has("prescore")) db.exec(`ALTER TABLE jobs ADD COLUMN prescore REAL`);
 
+  // profile column migrations
+  const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
+  const profNames = new Set(profCols.map((c) => c.name));
+  if (profNames.has("base_resume_path") && !profNames.has("base_resume_md")) {
+    db.exec(`ALTER TABLE profile RENAME COLUMN base_resume_path TO base_resume_md`);
+  }
+  if (!profNames.has("base_resume_md") && !profNames.has("base_resume_path")) {
+    db.exec(`ALTER TABLE profile ADD COLUMN base_resume_md TEXT`);
+  }
+
   // Rebuild jobs table if the CHECK constraint is missing required statuses.
   const jobsDdl = db
     .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'`)

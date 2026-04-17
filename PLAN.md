@@ -32,7 +32,7 @@ Decision: **SQLite + an MCP server** as the single system of record. Generated a
 ### Tables
 
 **profile** — single row, the user's identity + active search criteria
-- `id`, `full_name`, `email`, `phone`, `location`, `links_json`, `base_resume_path`, `preferences_json`
+- `id`, `full_name`, `email`, `phone`, `location`, `links_json`, `base_resume_md`, `preferences_json`
 - `criteria_json` — `{ titles, locations, keywords, exclusions, salary_min, remote_pref }`
 - `updated_at`
 

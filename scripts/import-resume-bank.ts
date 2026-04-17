@@ -160,7 +160,7 @@ function main() {
     phone: "(555) 555-0100",
     location: "New York, NY",
     links_json: { linkedin: "https://linkedin.com/in/jane-doe", github: "https://github.com/jane-doe" },
-    base_resume_path: "data/base/resume.md",
+    base_resume_md: "",
     preferences_json: { remote_ok: true },
     criteria_json: {
       titles: ["Product Manager", "Senior Product Manager", "Lead Product Manager"],
