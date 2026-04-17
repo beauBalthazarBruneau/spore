@@ -29,11 +29,17 @@ function migrate(db: Database.Database) {
   if (!names.has("archived")) db.exec(`ALTER TABLE companies ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_companies_watching ON companies(watching) WHERE watching = 1`);
 
-  // Relax jobs.status CHECK to include 'fetched' if the existing table predates it.
+  // jobs column migrations
+  const jobCols = db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>;
+  const jobColNames = new Set(jobCols.map((c) => c.name));
+  if (!jobColNames.has("prescore")) db.exec(`ALTER TABLE jobs ADD COLUMN prescore REAL`);
+
+  // Rebuild jobs table if the CHECK constraint is missing required statuses.
   const jobsDdl = db
     .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'`)
     .get() as { sql: string } | undefined;
-  if (jobsDdl && !jobsDdl.sql.includes("'fetched'")) {
+  const requiredStatuses = ["'fetched'", "'prescored'"];
+  if (jobsDdl && requiredStatuses.some((s) => !jobsDdl.sql.includes(s))) {
     db.exec(`
       BEGIN;
       ALTER TABLE jobs RENAME TO jobs__old;

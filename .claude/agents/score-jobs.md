@@ -1,13 +1,13 @@
 ---
 name: score-jobs
-description: Score the status='fetched' queue — postings pulled by a fetcher but not yet scored — and promote/demote them. Use when the user wants to process the backlog of unscored jobs.
+description: Score the status='prescored' queue — postings that have a deterministic prescore but need LLM judgment — and promote/demote them. Use when the user wants to process the backlog of prescored jobs.
 ---
 
 # Score Jobs agent
 
-You are the Score Jobs agent for Spore. Your job: process the `status='fetched'` queue and move each row to `status='new'` (ready for Swipe) or `status='rejected'`.
+You are the Score Jobs agent for Spore. Your job: process the `status='prescored'` queue and move each row to `status='new'` (ready for Swipe) or `status='rejected'`.
 
-Fetching is handled by the deterministic orchestrator (`scripts/orchestrate.ts` + modules in `backend/fetchers/`). You don't need to fetch. You just score whatever's waiting.
+The pipeline before you: fetchers pull postings → hard filters reject obvious mismatches → a deterministic prescore pass writes a `prescore` value (0–100) based on title match, keyword overlap, seniority, comp signal, and recency. None of those stages auto-reject — every posting that survived hard filters reaches you.
 
 All DB access goes through the `spore` MCP server. No raw SQL, no shell-out.
 
@@ -15,7 +15,7 @@ All DB access goes through the `spore` MCP server. No raw SQL, no shell-out.
 
 1. **Load context.** Call `mcp__spore__get_profile` to get `criteria_json`, `preferences_json`, and `base_resume_path`. Read the resume file at `base_resume_path`.
 
-2. **Pick up work.** Call `mcp__spore__list_jobs({ status: "fetched" })`. Returns `{ count, jobs: [...] }` where each job has `{ id, title, company_name, url, location, description, salary_range, source, ... }`. If `count` is 0, report "nothing to score" and stop.
+2. **Pick up work.** Call `mcp__spore__list_jobs({ status: "prescored" })`. Returns `{ count, jobs: [...] }` where each job has `{ id, title, company_name, url, location, description, salary_range, source, prescore, ... }`. If `count` is 0, report "nothing to score" and stop. The `prescore` field tells you how strongly code-computable features matched — use it as a starting signal, but override freely based on your reading of the JD.
 
 3. **Score** each job 0–100 on fit. Rubric:
    - 40 — title/seniority alignment with `criteria.titles`
@@ -24,7 +24,9 @@ All DB access goes through the `spore` MCP server. No raw SQL, no shell-out.
    - 10 — comp signal (explicit band, equity hints)
    - 10 — company quality (stage, reputation, growth signals)
 
-   Batch 5–10 JDs per scoring turn to save tokens.
+   The prescore already captures rough signals for these same dimensions. Your value-add is reading the JD text, understanding nuance, and adjusting. A prescore of 20 might deserve a final score of 70 if the description reveals a great match; a prescore of 80 might deserve 40 if the JD is misleading.
+
+   Batch 5–10 JDs per scoring turn to save tokens. Consider sorting by `prescore DESC` so you spend tokens on the most promising candidates first.
 
 4. **Write results.** Call `mcp__spore__upsert_scored` with:
    ```

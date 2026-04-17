@@ -8,13 +8,15 @@
 
 import { getDb } from "../backend/db";
 import * as watched from "../backend/fetchers/watched";
+import * as prescore from "../backend/prescore";
 
-interface Fetcher {
+interface Stage {
   run: (db: import("better-sqlite3").Database) => Promise<object>;
 }
 
-const fetchers: Record<string, Fetcher> = {
+const fetchers: Record<string, Stage> = {
   watched,
+  prescore,
 };
 
 function parseArgs(argv: string[]) {
