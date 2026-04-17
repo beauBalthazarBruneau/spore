@@ -29,8 +29,8 @@ function main() {
   db.exec("DELETE FROM events; DELETE FROM jobs; DELETE FROM companies; DELETE FROM profile;");
 
   db.prepare(`
-    INSERT INTO profile (id, full_name, email, phone, location, links_json, base_resume_path, preferences_json, criteria_json)
-    VALUES (1, @full_name, @email, @phone, @location, @links_json, @base_resume_path, @preferences_json, @criteria_json)
+    INSERT INTO profile (id, full_name, email, phone, location, links_json, base_resume_md, preferences_json, criteria_json)
+    VALUES (1, @full_name, @email, @phone, @location, @links_json, @base_resume_md, @preferences_json, @criteria_json)
   `).run({
     ...profile,
     links_json: JSON.stringify(profile.links_json ?? {}),

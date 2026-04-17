@@ -7,7 +7,7 @@
     "linkedin": "https://linkedin.com/in/jane-doe",
     "github": "https://github.com/jane-doe"
   },
-  "base_resume_path": "data/base/resume.md",
+  "base_resume_md": "# Jane Doe\n\n## Summary\nExperienced Product Manager...\n\n## Experience\n...",
   "preferences_json": {
     "remote_ok": true
   },

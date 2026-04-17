@@ -40,6 +40,15 @@ function migrate(db: Database.Database) {
   const jobCols = db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>;
   const jobColNames = new Set(jobCols.map((c) => c.name));
   if (!jobColNames.has("prescore")) db.exec(`ALTER TABLE jobs ADD COLUMN prescore REAL`);
+
+  const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
+  const profNames = new Set(profCols.map((c) => c.name));
+  if (profNames.has("base_resume_path") && !profNames.has("base_resume_md")) {
+    db.exec(`ALTER TABLE profile RENAME COLUMN base_resume_path TO base_resume_md`);
+  }
+  if (!profNames.has("base_resume_md") && !profNames.has("base_resume_path")) {
+    db.exec(`ALTER TABLE profile ADD COLUMN base_resume_md TEXT`);
+  }
 }
 
 const JOB_SELECT = `

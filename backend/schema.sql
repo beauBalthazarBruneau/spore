@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS profile (
   phone TEXT,
   location TEXT,
   links_json TEXT,
-  base_resume_path TEXT,
+  base_resume_md TEXT,
   preferences_json TEXT,
   criteria_json TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))

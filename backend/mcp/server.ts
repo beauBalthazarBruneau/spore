@@ -3,7 +3,8 @@
 // Tools:
 //   upsert_company    — create/update a company (name + optional ATS info, watching, notes)
 //   probe_ats         — verify a (source, slug) pair returns jobs without writing
-//   get_profile       — read profile (criteria, base_resume_path, etc.) for the find-jobs agent
+//   get_profile       — read profile (criteria, base_resume_md, etc.) for the find-jobs agent
+//   upsert_profile    — create or update profile fields (partial updates via COALESCE)
 //   fetch_candidates  — run the find-jobs fetch+hard-filter+insert pipeline, return candidates
 //   upsert_scored     — promote/demote candidates after the agent has scored them
 //
@@ -138,13 +139,13 @@ server.registerTool(
   },
 );
 
-// ---------- Profile (read-only — find-jobs agent needs criteria) ----------
+// ---------- Profile ----------
 
 server.registerTool(
   "get_profile",
   {
     description:
-      "Read the user profile, including parsed criteria_json, preferences_json, links_json, and the base_resume_path. Returns null if no profile is set.",
+      "Read the user profile, including parsed criteria_json, preferences_json, links_json, and the base_resume_md. Returns null if no profile is set.",
     inputSchema: {},
   },
   async () => {
@@ -161,6 +162,117 @@ server.registerTool(
       links_json: row.links_json ? JSON.parse(row.links_json) : {},
       preferences_json: row.preferences_json ? JSON.parse(row.preferences_json) : {},
       criteria_json: row.criteria_json ? JSON.parse(row.criteria_json) : {},
+    });
+  },
+);
+
+server.registerTool(
+  "upsert_profile",
+  {
+    description:
+      "Create or update the user profile (singleton row, id=1). All fields use COALESCE so you can send a partial update without clobbering unset fields. JSON fields (links, preferences, criteria) accept objects — they are stringified before storage.",
+    inputSchema: {
+      full_name: z.string().nullish(),
+      email: z.string().nullish(),
+      phone: z.string().nullish(),
+      location: z.string().nullish(),
+      links_json: z
+        .object({
+          linkedin: z.string().optional(),
+          github: z.string().optional(),
+          portfolio: z.string().optional(),
+        })
+        .passthrough()
+        .nullish()
+        .describe("Links object — keys are label, values are URLs"),
+      base_resume_md: z.string().nullish().describe("Base resume content as markdown"),
+      preferences_json: z
+        .object({ remote_ok: z.boolean().optional() })
+        .passthrough()
+        .nullish()
+        .describe("Freeform preferences object"),
+      criteria_json: z
+        .object({
+          titles: z.array(z.string()).optional(),
+          locations: z.array(z.string()).optional(),
+          keywords: z.array(z.string()).optional(),
+          exclusions: z
+            .object({
+              companies: z.array(z.string()).optional(),
+              company_domains: z.array(z.string()).optional(),
+              title_keywords: z.array(z.string()).optional(),
+              description_keywords: z.array(z.string()).optional(),
+              industries: z.array(z.string()).optional(),
+              locations: z.array(z.string()).optional(),
+              seniority: z.array(z.string()).optional(),
+              visa_required: z.boolean().optional(),
+            })
+            .passthrough()
+            .optional(),
+          salary_min: z.number().optional(),
+          remote_pref: z.string().optional(),
+        })
+        .passthrough()
+        .nullish()
+        .describe("Job search criteria"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const exists = !!db.prepare(`SELECT 1 FROM profile WHERE id = 1`).get();
+
+    if (!exists) {
+      db.prepare(
+        `INSERT INTO profile (id, full_name, email, phone, location, links_json, base_resume_md, preferences_json, criteria_json)
+         VALUES (1, @full_name, @email, @phone, @location, @links_json, @base_resume_md, @preferences_json, @criteria_json)`,
+      ).run({
+        full_name: args.full_name ?? null,
+        email: args.email ?? null,
+        phone: args.phone ?? null,
+        location: args.location ?? null,
+        links_json: args.links_json ? JSON.stringify(args.links_json) : null,
+        base_resume_md: args.base_resume_md ?? null,
+        preferences_json: args.preferences_json ? JSON.stringify(args.preferences_json) : null,
+        criteria_json: args.criteria_json ? JSON.stringify(args.criteria_json) : null,
+      });
+    } else {
+      db.prepare(
+        `UPDATE profile SET
+           full_name = COALESCE(@full_name, full_name),
+           email = COALESCE(@email, email),
+           phone = COALESCE(@phone, phone),
+           location = COALESCE(@location, location),
+           links_json = COALESCE(@links_json, links_json),
+           base_resume_md = COALESCE(@base_resume_md, base_resume_md),
+           preferences_json = COALESCE(@preferences_json, preferences_json),
+           criteria_json = COALESCE(@criteria_json, criteria_json),
+           updated_at = datetime('now')
+         WHERE id = 1`,
+      ).run({
+        full_name: args.full_name ?? null,
+        email: args.email ?? null,
+        phone: args.phone ?? null,
+        location: args.location ?? null,
+        links_json: args.links_json ? JSON.stringify(args.links_json) : null,
+        base_resume_md: args.base_resume_md ?? null,
+        preferences_json: args.preferences_json ? JSON.stringify(args.preferences_json) : null,
+        criteria_json: args.criteria_json ? JSON.stringify(args.criteria_json) : null,
+      });
+    }
+
+    const row = db.prepare(`SELECT * FROM profile WHERE id = 1`).get() as Record<string, unknown> & {
+      links_json?: string | null;
+      preferences_json?: string | null;
+      criteria_json?: string | null;
+    };
+    return ok({
+      action: exists ? "updated" : "created",
+      profile: {
+        ...row,
+        links_json: row.links_json ? JSON.parse(row.links_json) : {},
+        preferences_json: row.preferences_json ? JSON.parse(row.preferences_json) : {},
+        criteria_json: row.criteria_json ? JSON.parse(row.criteria_json) : {},
+      },
     });
   },
 );

@@ -13,7 +13,7 @@ All DB access goes through the `spore` MCP server. No raw SQL, no shell-out.
 
 ## Your job
 
-1. **Load context.** Call `mcp__spore__get_profile` to get `criteria_json`, `preferences_json`, and `base_resume_path`. Read the resume file at `base_resume_path`.
+1. **Load context.** Call `mcp__spore__get_profile` to get `criteria_json`, `preferences_json`, and `base_resume_md` (the user's base resume as markdown).
 
 2. **Pick up work.** Call `mcp__spore__list_jobs({ status: "prescored" })`. Returns `{ count, jobs: [...] }` where each job has `{ id, title, company_name, url, location, description, salary_range, source, prescore, ... }`. If `count` is 0, report "nothing to score" and stop. The `prescore` field tells you how strongly code-computable features matched — use it as a starting signal, but override freely based on your reading of the JD.
 
