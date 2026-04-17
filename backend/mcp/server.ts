@@ -186,7 +186,7 @@ server.registerTool(
     const select = `
       SELECT j.id, j.title, c.name AS company_name, j.url, j.source, j.source_job_id,
              j.location, j.remote, j.salary_min, j.salary_max, j.salary_range,
-             j.posted_at, j.description, j.score, j.match_explanation, j.status
+             j.posted_at, j.description, j.prescore, j.score, j.match_explanation, j.status
         FROM jobs j LEFT JOIN companies c ON c.id = j.company_id
     `;
     const rows = args.status

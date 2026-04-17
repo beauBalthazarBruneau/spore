@@ -46,15 +46,16 @@ CREATE TABLE IF NOT EXISTS jobs (
   discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
   description TEXT,
   raw_json TEXT,
+  prescore REAL,
   score REAL,
   match_explanation TEXT,
 
-  -- lifecycle: flattened from resume_bank postings + applications
-  -- Pre-Swipe:    fetched (passed hard filters, not yet Claude-scored)
+  -- lifecycle
+  -- Pre-Swipe:    fetched → prescored (deterministic scoring) → new|rejected (LLM-scored)
   -- Swipe values: new | approved | rejected | skipped
   -- Board values: needs_tailoring | tailoring | tailored | ready_to_apply | applied | interview_invite | declined | on_hold
   status TEXT NOT NULL DEFAULT 'new' CHECK (status IN (
-    'fetched',
+    'fetched','prescored',
     'new','approved','rejected','skipped',
     'needs_tailoring','tailoring','tailored','ready_to_apply','applied','interview_invite','declined','on_hold'
   )),
