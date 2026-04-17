@@ -5,7 +5,7 @@
       "mcp__spore__upsert_company",
       "mcp__spore__probe_ats",
       "mcp__spore__get_profile",
-      "mcp__spore__fetch_candidates",
+      "mcp__spore__list_jobs",
       "mcp__spore__upsert_scored",
       "mcp__spore__add_jobs",
       "WebSearch",
