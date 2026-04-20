@@ -15,6 +15,12 @@ interface GHJob {
   offices?: Array<{ name?: string; location?: string }>;
 }
 
+const DELAY_MS = 1000; // pause between board fetches to avoid Greenhouse 503s
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function fetchBoard(slug: string): Promise<GHJob[]> {
   const url = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(slug)}/jobs?content=true`;
   const res = await fetch(url);
@@ -73,7 +79,9 @@ export const greenhouse: SourceAdapter = {
   async search(opts: SearchOpts): Promise<RawPosting[]> {
     const slugs = opts.companies ?? [];
     const out: RawPosting[] = [];
-    for (const slug of slugs) {
+    for (let i = 0; i < slugs.length; i++) {
+      const slug = slugs[i];
+      if (i > 0) await sleep(DELAY_MS);
       try {
         const jobs = await fetchBoard(slug);
         const limited = opts.maxPerCompany ? jobs.slice(0, opts.maxPerCompany) : jobs;
