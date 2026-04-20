@@ -18,7 +18,10 @@ import { sources } from "../sources";
 import { upsertJob } from "../upsert";
 import type { RawPosting } from "../sources/types";
 
-const ATS_SOURCE = z.enum(["greenhouse", "lever", "ashby", "rippling"]);
+const SUPPORTED_ATS = ["greenhouse", "lever", "ashby", "rippling"] as const;
+const ATS_SOURCE = z.enum(SUPPORTED_ATS);
+/** Accepts any ATS name for storage — only supported ones can be probed/watched. */
+const ATS_SOURCE_ANY = z.string();
 
 function ok(data: unknown) {
   return {
@@ -45,7 +48,7 @@ server.registerTool(
       "Create or update a company by name (case-insensitive). If watching=true is requested with an ats_source/ats_slug, the slug is probed first via the matching source adapter; if the probe fails, watching is forced to false and a warning is included in the response.",
     inputSchema: {
       name: z.string().describe("Company name (case-insensitive unique key)"),
-      ats_source: ATS_SOURCE.nullish(),
+      ats_source: ATS_SOURCE_ANY.nullish().describe("ATS name (any string accepted for storage; only greenhouse/lever/ashby/rippling can be probed/watched)"),
       ats_slug: z.string().nullish().describe("Board identifier on the ATS"),
       watching: z.boolean().optional().describe("Include in scheduled find-jobs fetches"),
       domain: z.string().nullish(),
@@ -61,6 +64,11 @@ server.registerTool(
 
     if (watching && (!args.ats_source || !args.ats_slug)) {
       warning = "watching requested but ats_source/ats_slug missing — forcing watching=0";
+      watching = 0;
+    }
+
+    if (watching && args.ats_source && !sources[args.ats_source]) {
+      warning = `ats_source '${args.ats_source}' is not a supported adapter — forcing watching=0`;
       watching = 0;
     }
 

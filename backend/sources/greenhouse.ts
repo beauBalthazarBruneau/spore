@@ -1,4 +1,5 @@
 import type { RawPosting, SearchOpts, SourceAdapter } from "./types";
+import { extractSalaryFromText, extractRemoteFromText } from "./extract";
 
 // Greenhouse exposes a public JSON board per company:
 //   https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true
@@ -47,6 +48,9 @@ function stripHtml(s: string | undefined): string | undefined {
 }
 
 function toPosting(slug: string, j: GHJob): RawPosting {
+  const description = stripHtml(j.content);
+  const { min, max, range } = extractSalaryFromText(description);
+  const remote = extractRemoteFromText(description);
   return {
     source: "greenhouse",
     source_job_id: String(j.id),
@@ -54,8 +58,12 @@ function toPosting(slug: string, j: GHJob): RawPosting {
     title: j.title,
     company_name: slug,
     location: j.location?.name,
+    remote,
+    salary_min: min,
+    salary_max: max,
+    salary_range: range,
     posted_at: j.updated_at,
-    description: stripHtml(j.content),
+    description,
     raw: j,
   };
 }

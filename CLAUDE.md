@@ -15,6 +15,7 @@ Root (backend / orchestrators / scripts):
 - `npm run import-resume-bank` — one-off importer from the legacy `resumebank.db`
 - `npx tsx scripts/orchestrate.ts --name watched` — fetch postings from watched companies' ATS boards → `status='fetched'`
 - `npx tsx scripts/orchestrate.ts --name prescore` — deterministic prescore over `status='fetched'` → `status='prescored'`
+- `npm run discover` / `npx tsx scripts/orchestrate.ts --name discover [--months 3] [--rounds seed,a,b] [--sector ai,devtools]` — scrape funding news for recently-funded companies, output candidates (does not write to DB)
 - `npx tsx backend/mcp/server.ts` — run the `spore` MCP server over stdio (normally launched by `.mcp.json`)
 
 Frontend (`frontend/` workspace, also reachable from root as `npm run dev`):
@@ -73,6 +74,8 @@ Per-ATS adapters implement `SourceAdapter.search(opts) → RawPosting[]`: `green
 ### Orchestrator pattern
 
 `scripts/orchestrate.ts` is the single entry point for scheduled / cron-triggered stages. Each stage is a module exporting `run(db) → Promise<Report>`. Every run logs a `{name}_fetch_run` event with counts + duration; errors are caught, logged, and exit non-zero. New deterministic stages plug in by adding a module and entry to the `fetchers` map.
+
+- **`discover`** (`backend/fetchers/discover.ts`) — scrapes TechCrunch's fundraising RSS feed for recently-funded companies (Seed/A/B by default). Outputs candidates but does **not** write to the DB — the `add-companies` skill handles enrichment and upsert. Supports `--months`, `--rounds`, and `--sector` CLI flags.
 
 ### Frontend (`frontend/`)
 

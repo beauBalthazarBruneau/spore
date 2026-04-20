@@ -41,11 +41,60 @@ describe("applyHardFilters", () => {
     expect(applyHardFilters(base, { salary_min: 200_000 }).passed).toBe(true);
   });
 
-  it("rejects on-site-only postings when remote is required", () => {
+  it("passes remote roles when locations include Remote", () => {
     const r = applyHardFilters(
-      { ...base, location: "New York, NY", description: "This role is on-site only." },
-      { remote_pref: "remote" },
+      { ...base, location: "Remote", remote: "remote" },
+      { locations: ["New York, NY", "Remote"] },
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  it("passes roles in an accepted location", () => {
+    const r = applyHardFilters(
+      { ...base, location: "New York, NY" },
+      { locations: ["New York, NY", "Remote"] },
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  it("rejects roles in a non-accepted location", () => {
+    const r = applyHardFilters(
+      { ...base, location: "San Francisco, CA", remote: "onsite" },
+      { locations: ["New York, NY", "Remote"] },
     );
     expect(r.passed).toBe(false);
+    expect(r.reason).toMatch(/not in accepted locations/);
+  });
+
+  it("passes when location contains accepted city", () => {
+    const r = applyHardFilters(
+      { ...base, location: "New York, NY; San Francisco, CA" },
+      { locations: ["New York, NY", "Remote"] },
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  it("passes when remote signal is in location string", () => {
+    const r = applyHardFilters(
+      { ...base, location: "Remote (US)" },
+      { locations: ["New York, NY", "Remote"] },
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  it("matches NYC variants against 'New York, NY'", () => {
+    const locs = ["New York, NY", "Remote"];
+    for (const nyc of ["New York City, NY", "New York, New York", "New York City", "Hybrid - New York City", "New York"]) {
+      const r = applyHardFilters({ ...base, location: nyc, remote: undefined }, { locations: locs });
+      expect(r.passed, `expected '${nyc}' to pass`).toBe(true);
+    }
+  });
+
+  it("skips location filter when no locations configured", () => {
+    const r = applyHardFilters(
+      { ...base, location: "Tokyo, Japan" },
+      {},
+    );
+    expect(r.passed).toBe(true);
   });
 });

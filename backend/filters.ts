@@ -48,12 +48,25 @@ export function applyHardFilters(p: RawPosting, criteria: Criteria): FilterResul
     return { passed: false, reason: `salary ${p.salary_max} below floor ${criteria.salary_min}` };
   }
 
-  if (criteria.remote_pref === "remote") {
-    const remoteSignal = /remote/i.test(p.location ?? "") || /remote/i.test(p.remote ?? "");
-    if (!remoteSignal && p.location && !/remote/i.test(p.location)) {
-      // soft — only reject if an on-site-only phrase appears in description
-      if (/\bon[-\s]?site only\b/i.test(p.description ?? "")) {
-        return { passed: false, reason: "on-site only, user wants remote" };
+  // Location filter: reject roles that are neither remote nor in an accepted location.
+  // Uses criteria.locations as the allowlist (e.g. ["New York, NY", "Remote"]).
+  if (criteria.locations?.length) {
+    const isRemote =
+      /remote/i.test(p.remote ?? "") ||
+      /remote/i.test(p.location ?? "");
+    const allowsRemote = criteria.locations.some((l) => /remote/i.test(l));
+
+    if (isRemote && allowsRemote) {
+      // Remote role + user accepts remote → pass
+    } else if (p.location) {
+      // Extract city keywords from accepted locations for fuzzy matching.
+      // "New York, NY" → "new york", "San Francisco, CA" → "san francisco"
+      const acceptedCities = criteria.locations
+        .filter((l) => !/remote/i.test(l))
+        .map((l) => l.replace(/,?\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|USA?)$/i, "").trim().toLowerCase());
+      const locMatch = acceptedCities.some((city) => loc.includes(city));
+      if (!locMatch && !isRemote) {
+        return { passed: false, reason: `location '${p.location}' not in accepted locations` };
       }
     }
   }

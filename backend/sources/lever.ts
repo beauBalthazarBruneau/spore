@@ -1,4 +1,5 @@
 import type { RawPosting, SearchOpts, SourceAdapter } from "./types";
+import { extractSalaryFromText, extractRemoteFromText } from "./extract";
 
 // Lever: https://api.lever.co/v0/postings/{company}?mode=json
 interface LeverJob {
@@ -32,6 +33,8 @@ function toPosting(slug: string, j: LeverJob): RawPosting {
   const description = [j.descriptionPlain ?? stripHtml(j.description), listText]
     .filter(Boolean)
     .join("\n\n");
+  const { min, max, range } = extractSalaryFromText(description);
+  const remote = j.categories?.commitment || extractRemoteFromText(description);
   return {
     source: "lever",
     source_job_id: j.id,
@@ -39,7 +42,10 @@ function toPosting(slug: string, j: LeverJob): RawPosting {
     title: j.text,
     company_name: slug,
     location: j.categories?.location,
-    remote: j.categories?.commitment,
+    remote,
+    salary_min: min,
+    salary_max: max,
+    salary_range: range,
     posted_at: j.createdAt ? new Date(j.createdAt).toISOString() : undefined,
     description,
     raw: j,

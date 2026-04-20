@@ -5,18 +5,32 @@
 //
 // Usage:
 //   tsx scripts/orchestrate.ts --name watched
+//   tsx scripts/orchestrate.ts --name discover [--months 3] [--rounds seed,a,b] [--sector ai,devtools]
 
 import { getDb } from "../backend/db";
 import * as watched from "../backend/fetchers/watched";
 import * as prescore from "../backend/prescore";
+import * as discover from "../backend/fetchers/discover";
 
 interface Stage {
-  run: (db: import("better-sqlite3").Database) => Promise<object>;
+  run: (db: import("better-sqlite3").Database, extra?: Record<string, string>) => Promise<object>;
 }
+
+// Wrap discover.run to accept the generic Stage signature and forward CLI args
+const discoverStage: Stage = {
+  async run(db, extra = {}) {
+    const opts: discover.DiscoverOpts = {};
+    if (extra.months) opts.months = parseInt(extra.months, 10);
+    if (extra.rounds) opts.rounds = extra.rounds.split(",");
+    if (extra.sector) opts.sectors = extra.sector.split(",");
+    return discover.run(db, opts);
+  },
+};
 
 const fetchers: Record<string, Stage> = {
   watched,
   prescore,
+  discover: discoverStage,
 };
 
 function parseArgs(argv: string[]) {
@@ -52,7 +66,8 @@ async function main() {
   );
   const start = Date.now();
   try {
-    const report = await f.run(db);
+    const { name: _, ...extra } = args;
+    const report = await f.run(db, extra);
     const duration_ms = Date.now() - start;
     const payload = { ...report, duration_ms };
     logEvent.run("system", 0, `${args.name}_fetch_run`, "system", JSON.stringify(payload));
