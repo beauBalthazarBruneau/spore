@@ -11,10 +11,10 @@ Output is a candidate list — this stage does **not** write to the DB. The `add
 npm run discover
 
 # Custom window + rounds
-npx tsx scripts/orchestrate.ts --name discover --months 2 --rounds seed,a,b
+npx tsx backend/orchestrate.ts --name discover-companies --months 2 --rounds seed,a,b
 
 # Sector-filtered (word-boundary match against title + description)
-npx tsx scripts/orchestrate.ts --name discover --sector ai,devtools
+npx tsx backend/orchestrate.ts --name discover-companies --sector ai,devtools
 ```
 
 ## Current sources

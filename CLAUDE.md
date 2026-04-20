@@ -13,9 +13,9 @@ Root (backend / orchestrators / scripts):
 - `npx vitest run backend/prescore.test.ts` — run a single backend test file
 - `npm run seed` — wipe + reseed `data/autoapply.db` from `data.example/` (idempotent)
 - `npm run import-resume-bank` — one-off importer from the legacy `resumebank.db`
-- `npx tsx scripts/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]` — scrape funding news for recently-funded companies, output candidates (does not write to DB)
-- `npx tsx scripts/orchestrate.ts --name discover-jobs-by-companies` — fetch postings from watched companies' ATS boards → `status='fetched'`
-- `npx tsx scripts/orchestrate.ts --name prescore` — deterministic prescore over `status='fetched'` → `status='prescored'`
+- `npx tsx backend/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]` — scrape funding news for recently-funded companies, output candidates (does not write to DB)
+- `npx tsx backend/orchestrate.ts --name discover-jobs-by-companies` — fetch postings from watched companies' ATS boards → `status='fetched'`
+- `npx tsx backend/orchestrate.ts --name prescore` — deterministic prescore over `status='fetched'` → `status='prescored'`
 - `npx tsx backend/mcp/server.ts` — run the `spore` MCP server over stdio (normally launched by `.mcp.json`)
 
 Frontend (`frontend/` workspace, also reachable from root as `npm run dev`):
@@ -73,7 +73,7 @@ Per-ATS adapters implement `SourceAdapter.search(opts) → RawPosting[]`: `green
 
 ### Orchestrator pattern
 
-`scripts/orchestrate.ts` is the single entry point for scheduled / cron-triggered stages. Each stage is a module exporting `run(db) → Promise<Report>`. Every run logs a `{name}_fetch_run` event with counts + duration; errors are caught, logged, and exit non-zero. New deterministic stages plug in by adding a module and entry to the `fetchers` map.
+`backend/orchestrate.ts` is the single entry point for scheduled / cron-triggered stages. Each stage is a module exporting `run(db) → Promise<Report>`. Every run logs a `{name}_fetch_run` event with counts + duration; errors are caught, logged, and exit non-zero. New deterministic stages plug in by adding a module and entry to the `fetchers` map.
 
 - **`discover-companies`** (`backend/fetchers/discover/`) — scrapes TechCrunch + Google News RSS feeds for recently-funded companies (Seed/A/B by default). Outputs candidates but does **not** write to the DB — the `add-companies` skill handles enrichment and upsert. Supports `--months`, `--rounds`, and `--sector` CLI flags. Dedupes against previously surfaced candidates via `discovered_candidates` table.
 - **`discover-jobs-by-companies`** (`backend/fetchers/watched.ts`) — fetches jobs from watched companies' ATS boards, applies hard filters, writes survivors as `status='fetched'`. Also handles stale job cleanup (marks removed postings) and auto-archives companies with 5+ consecutive empty fetches.

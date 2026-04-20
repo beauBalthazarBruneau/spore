@@ -4,14 +4,14 @@
 // and exits non-zero on failure so cron can mail you.
 //
 // Usage:
-//   tsx scripts/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]
-//   tsx scripts/orchestrate.ts --name discover-jobs-by-companies
-//   tsx scripts/orchestrate.ts --name prescore
+//   tsx backend/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]
+//   tsx backend/orchestrate.ts --name discover-jobs-by-companies
+//   tsx backend/orchestrate.ts --name prescore
 
-import { getDb } from "../backend/db";
-import * as discoverJobsByCompanies from "../backend/fetchers/discover-jobs-by-companies";
-import * as prescore from "../backend/prescore";
-import * as discoverCompanies from "../backend/fetchers/discover-companies";
+import { getDb } from "./db";
+import * as discoverJobsByCompanies from "./fetchers/discover-jobs-by-companies";
+import * as prescore from "./prescore";
+import * as discoverCompanies from "./fetchers/discover-companies";
 
 interface Stage {
   run: (db: import("better-sqlite3").Database, extra?: Record<string, string>) => Promise<object>;

@@ -8,7 +8,7 @@
   "scripts": {
     "seed": "tsx scripts/seed.ts",
     "import-resume-bank": "tsx scripts/import-resume-bank.ts",
-    "discover": "tsx scripts/orchestrate.ts --name discover-companies",
+    "discover": "tsx backend/orchestrate.ts --name discover-companies",
     "dev": "npm --workspace frontend run dev",
     "test": "vitest run"
   },
