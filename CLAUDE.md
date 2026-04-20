@@ -9,10 +9,8 @@ Spore (package name `autoapply`) is a local, self-hosted job-application automat
 ## Commands
 
 Root (backend / orchestrators / scripts):
-- `npm test` — vitest over `backend/**/*.test.ts` and `scripts/**/*.test.ts`
+- `npm test` — vitest over `backend/**/*.test.ts`
 - `npx vitest run backend/prescore.test.ts` — run a single backend test file
-- `npm run seed` — wipe + reseed `data/autoapply.db` from `data.example/` (idempotent)
-- `npm run import-resume-bank` — one-off importer from the legacy `resumebank.db`
 - `npx tsx backend/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]` — scrape funding news for recently-funded companies, output candidates (does not write to DB)
 - `npx tsx backend/orchestrate.ts --name discover-jobs-by-companies` — fetch postings from watched companies' ATS boards → `status='fetched'`
 - `npx tsx backend/orchestrate.ts --name prescore` — deterministic prescore over `status='fetched'` → `status='prescored'`
@@ -30,7 +28,7 @@ Direct DB inspection: `sqlite3 data/autoapply.db`. Schema in `backend/schema.sql
 ### Single SQLite file, two TypeScript entry points
 
 `data/autoapply.db` is opened by:
-1. **Backend** (`backend/db.ts`) — used by the MCP server, fetchers, orchestrator, seed scripts. Path is resolved relative to repo root.
+1. **Backend** (`backend/db.ts`) — used by the MCP server, fetchers, and orchestrator. Path is resolved relative to repo root.
 2. **Frontend** (`frontend/lib/db.ts`) — used by Next.js route handlers and server components. Path is resolved from `process.cwd()/..` because Next.js runs inside `frontend/`. Uses `globalThis` to survive hot reload.
 
 Both modules apply the same schema + migrations on connect. Keep them in sync: if you add a migration to one, add it to the other, or factor it out. `process.env.AUTOAPPLY_DB` overrides the path in both.
@@ -93,4 +91,4 @@ Next.js 14 App Router on port 3100. Pages: `/swipe`, `/board`, `/companies`, `/p
 - **Dedup key is `(source, source_job_id) OR url`.** `upsertJob` checks this before insert; adapters must populate `source_job_id` (or set `source='manual'` with the URL as the id, like `add_jobs` does).
 - **Hard-filter rejections are saved, not dropped.** Written with `status='rejected'` + `rejection_reason` so Stats can show them and they're not re-scored.
 - **Migrations live in `db.ts` `migrate()` (both copies).** Additive ALTERs only; destructive reshapes use the rename-recreate-copy pattern already in place for the `jobs.status` CHECK constraint.
-- **`data/` is gitignored; `data.example/` is committed.** Never commit real data. `npm run seed` bootstraps a working DB from the example fixtures.
+- **`data/` is gitignored; `data.example/` is committed.** Never commit real data.
