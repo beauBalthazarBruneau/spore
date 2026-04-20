@@ -10,8 +10,8 @@ import {
   normalizeAmount,
   roundMatches,
   sectorMatches,
-} from "./discover/parse";
-import { run } from "./discover";
+} from "./discover-companies/parse";
+import { run } from "./discover-companies";
 
 // ---------------------------------------------------------------------------
 // Helpers

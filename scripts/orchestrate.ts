@@ -9,28 +9,28 @@
 //   tsx scripts/orchestrate.ts --name prescore
 
 import { getDb } from "../backend/db";
-import * as watched from "../backend/fetchers/watched";
+import * as discoverJobsByCompanies from "../backend/fetchers/discover-jobs-by-companies";
 import * as prescore from "../backend/prescore";
-import * as discover from "../backend/fetchers/discover";
+import * as discoverCompanies from "../backend/fetchers/discover-companies";
 
 interface Stage {
   run: (db: import("better-sqlite3").Database, extra?: Record<string, string>) => Promise<object>;
 }
 
-// Wrap discover.run to accept the generic Stage signature and forward CLI args
-const discoverStage: Stage = {
+// Wrap discoverCompanies.run to accept the generic Stage signature and forward CLI args
+const discoverCompaniesStage: Stage = {
   async run(db, extra = {}) {
-    const opts: discover.DiscoverOpts = {};
+    const opts: discoverCompanies.DiscoverOpts = {};
     if (extra.months) opts.months = parseInt(extra.months, 10);
     if (extra.rounds) opts.rounds = extra.rounds.split(",");
     if (extra.sector) opts.sectors = extra.sector.split(",");
-    return discover.run(db, opts);
+    return discoverCompanies.run(db, opts);
   },
 };
 
 const fetchers: Record<string, Stage> = {
-  "discover-companies": discoverStage,
-  "discover-jobs-by-companies": watched,
+  "discover-companies": discoverCompaniesStage,
+  "discover-jobs-by-companies": discoverJobsByCompanies,
   prescore,
 };
 
