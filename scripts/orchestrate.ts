@@ -4,8 +4,9 @@
 // and exits non-zero on failure so cron can mail you.
 //
 // Usage:
-//   tsx scripts/orchestrate.ts --name watched
-//   tsx scripts/orchestrate.ts --name discover [--months 3] [--rounds seed,a,b] [--sector ai,devtools]
+//   tsx scripts/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]
+//   tsx scripts/orchestrate.ts --name discover-jobs-by-companies
+//   tsx scripts/orchestrate.ts --name prescore
 
 import { getDb } from "../backend/db";
 import * as watched from "../backend/fetchers/watched";
@@ -28,9 +29,9 @@ const discoverStage: Stage = {
 };
 
 const fetchers: Record<string, Stage> = {
-  watched,
+  "discover-companies": discoverStage,
+  "discover-jobs-by-companies": watched,
   prescore,
-  discover: discoverStage,
 };
 
 function parseArgs(argv: string[]) {
