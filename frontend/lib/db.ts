@@ -35,6 +35,7 @@ function migrate(db: Database.Database) {
   if (!names.has("ats_slug")) db.exec(`ALTER TABLE companies ADD COLUMN ats_slug TEXT`);
   if (!names.has("watching")) db.exec(`ALTER TABLE companies ADD COLUMN watching INTEGER NOT NULL DEFAULT 0`);
   if (!names.has("archived")) db.exec(`ALTER TABLE companies ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
+  if (!names.has("consecutive_empty_fetches")) db.exec(`ALTER TABLE companies ADD COLUMN consecutive_empty_fetches INTEGER NOT NULL DEFAULT 0`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_companies_watching ON companies(watching) WHERE watching = 1`);
 
   const jobCols = db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>;

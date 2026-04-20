@@ -97,3 +97,11 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);
+
+-- Tracks companies surfaced by the discover stage so they aren't re-shown.
+CREATE TABLE IF NOT EXISTS discovered_candidates (
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+  last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+  dismissed INTEGER NOT NULL DEFAULT 0
+);

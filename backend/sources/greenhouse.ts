@@ -1,4 +1,5 @@
 import type { RawPosting, SearchOpts, SourceAdapter } from "./types";
+import { extractSalaryFromText, extractRemoteFromText } from "./extract";
 
 // Greenhouse exposes a public JSON board per company:
 //   https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true
@@ -12,6 +13,12 @@ interface GHJob {
   content?: string;
   metadata?: Array<{ name: string; value: unknown }> | null;
   offices?: Array<{ name?: string; location?: string }>;
+}
+
+const DELAY_MS = 1000; // pause between board fetches to avoid Greenhouse 503s
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function fetchBoard(slug: string): Promise<GHJob[]> {
@@ -47,6 +54,9 @@ function stripHtml(s: string | undefined): string | undefined {
 }
 
 function toPosting(slug: string, j: GHJob): RawPosting {
+  const description = stripHtml(j.content);
+  const { min, max, range } = extractSalaryFromText(description);
+  const remote = extractRemoteFromText(description);
   return {
     source: "greenhouse",
     source_job_id: String(j.id),
@@ -54,8 +64,12 @@ function toPosting(slug: string, j: GHJob): RawPosting {
     title: j.title,
     company_name: slug,
     location: j.location?.name,
+    remote,
+    salary_min: min,
+    salary_max: max,
+    salary_range: range,
     posted_at: j.updated_at,
-    description: stripHtml(j.content),
+    description,
     raw: j,
   };
 }
@@ -65,7 +79,9 @@ export const greenhouse: SourceAdapter = {
   async search(opts: SearchOpts): Promise<RawPosting[]> {
     const slugs = opts.companies ?? [];
     const out: RawPosting[] = [];
-    for (const slug of slugs) {
+    for (let i = 0; i < slugs.length; i++) {
+      const slug = slugs[i];
+      if (i > 0) await sleep(DELAY_MS);
       try {
         const jobs = await fetchBoard(slug);
         const limited = opts.maxPerCompany ? jobs.slice(0, opts.maxPerCompany) : jobs;

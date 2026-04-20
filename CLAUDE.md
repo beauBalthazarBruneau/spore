@@ -9,12 +9,11 @@ Spore (package name `autoapply`) is a local, self-hosted job-application automat
 ## Commands
 
 Root (backend / orchestrators / scripts):
-- `npm test` — vitest over `backend/**/*.test.ts` and `scripts/**/*.test.ts`
+- `npm test` — vitest over `backend/**/*.test.ts`
 - `npx vitest run backend/prescore.test.ts` — run a single backend test file
-- `npm run seed` — wipe + reseed `data/autoapply.db` from `data.example/` (idempotent)
-- `npm run import-resume-bank` — one-off importer from the legacy `resumebank.db`
-- `npx tsx scripts/orchestrate.ts --name watched` — fetch postings from watched companies' ATS boards → `status='fetched'`
-- `npx tsx scripts/orchestrate.ts --name prescore` — deterministic prescore over `status='fetched'` → `status='prescored'`
+- `npx tsx backend/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]` — scrape funding news for recently-funded companies, output candidates (does not write to DB)
+- `npx tsx backend/orchestrate.ts --name discover-jobs-by-companies` — fetch postings from watched companies' ATS boards → `status='fetched'`
+- `npx tsx backend/orchestrate.ts --name prescore` — deterministic prescore over `status='fetched'` → `status='prescored'`
 - `npx tsx backend/mcp/server.ts` — run the `spore` MCP server over stdio (normally launched by `.mcp.json`)
 
 Frontend (`frontend/` workspace, also reachable from root as `npm run dev`):
@@ -29,7 +28,7 @@ Direct DB inspection: `sqlite3 data/autoapply.db`. Schema in `backend/schema.sql
 ### Single SQLite file, two TypeScript entry points
 
 `data/autoapply.db` is opened by:
-1. **Backend** (`backend/db.ts`) — used by the MCP server, fetchers, orchestrator, seed scripts. Path is resolved relative to repo root.
+1. **Backend** (`backend/db.ts`) — used by the MCP server, fetchers, and orchestrator. Path is resolved relative to repo root.
 2. **Frontend** (`frontend/lib/db.ts`) — used by Next.js route handlers and server components. Path is resolved from `process.cwd()/..` because Next.js runs inside `frontend/`. Uses `globalThis` to survive hot reload.
 
 Both modules apply the same schema + migrations on connect. Keep them in sync: if you add a migration to one, add it to the other, or factor it out. `process.env.AUTOAPPLY_DB` overrides the path in both.
@@ -72,7 +71,10 @@ Per-ATS adapters implement `SourceAdapter.search(opts) → RawPosting[]`: `green
 
 ### Orchestrator pattern
 
-`scripts/orchestrate.ts` is the single entry point for scheduled / cron-triggered stages. Each stage is a module exporting `run(db) → Promise<Report>`. Every run logs a `{name}_fetch_run` event with counts + duration; errors are caught, logged, and exit non-zero. New deterministic stages plug in by adding a module and entry to the `fetchers` map.
+`backend/orchestrate.ts` is the single entry point for scheduled / cron-triggered stages. Each stage is a module exporting `run(db) → Promise<Report>`. Every run logs a `{name}_fetch_run` event with counts + duration; errors are caught, logged, and exit non-zero. New deterministic stages plug in by adding a module and entry to the `fetchers` map.
+
+- **`discover-companies`** (`backend/fetchers/discover/`) — scrapes TechCrunch + Google News RSS feeds for recently-funded companies (Seed/A/B by default). Outputs candidates but does **not** write to the DB — the `add-companies` skill handles enrichment and upsert. Supports `--months`, `--rounds`, and `--sector` CLI flags. Dedupes against previously surfaced candidates via `discovered_candidates` table.
+- **`discover-jobs-by-companies`** (`backend/fetchers/watched.ts`) — fetches jobs from watched companies' ATS boards, applies hard filters, writes survivors as `status='fetched'`. Also handles stale job cleanup (marks removed postings) and auto-archives companies with 5+ consecutive empty fetches.
 
 ### Frontend (`frontend/`)
 
@@ -89,4 +91,4 @@ Next.js 14 App Router on port 3100. Pages: `/swipe`, `/board`, `/companies`, `/p
 - **Dedup key is `(source, source_job_id) OR url`.** `upsertJob` checks this before insert; adapters must populate `source_job_id` (or set `source='manual'` with the URL as the id, like `add_jobs` does).
 - **Hard-filter rejections are saved, not dropped.** Written with `status='rejected'` + `rejection_reason` so Stats can show them and they're not re-scored.
 - **Migrations live in `db.ts` `migrate()` (both copies).** Additive ALTERs only; destructive reshapes use the rename-recreate-copy pattern already in place for the `jobs.status` CHECK constraint.
-- **`data/` is gitignored; `data.example/` is committed.** Never commit real data. `npm run seed` bootstraps a working DB from the example fixtures.
+- **`data/` is gitignored; `data.example/` is committed.** Never commit real data.
