@@ -7,6 +7,10 @@ const REJECT_REASONS = [
   "posting_not_found", "other",
 ];
 
+const APPROVE_REASONS = [
+  "great_fit", "stretch_good_company", "backup_option", "other",
+];
+
 export default function SwipeClient({
   initialJobs,
   nearMisses = [],
@@ -16,6 +20,7 @@ export default function SwipeClient({
 }) {
   const [queue, setQueue] = useState(initialJobs);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
   const [reviewingNearMisses, setReviewingNearMisses] = useState(false);
   const current = queue[0];
 
@@ -29,16 +34,17 @@ export default function SwipeClient({
   }, []);
 
   useEffect(() => {
-    if (rejectingId != null) return;
+    if (rejectingId != null || approvingId != null) return;
     const onKey = (e: KeyboardEvent) => {
       if (!current) return;
+      // Arrow Right is still a fast-approve — the modal is only for when you want to label.
       if (e.key === "ArrowRight") act(current.id, { status: "approved" });
       else if (e.key === "ArrowLeft") setRejectingId(current.id);
       else if (e.key === "ArrowUp") act(current.id, { status: "skipped" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, act, rejectingId]);
+  }, [current, act, rejectingId, approvingId]);
 
   if (!current) {
     return (
@@ -100,7 +106,7 @@ export default function SwipeClient({
         >↑ Skip</button>
         <button
           className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500"
-          onClick={() => act(current.id, { status: "approved" })}
+          onClick={() => setApprovingId(current.id)}
         >Approve →</button>
       </div>
 
@@ -111,6 +117,20 @@ export default function SwipeClient({
             act(rejectingId, { status: "rejected", rejection_reason: reason, rejection_note: note || null });
             setRejectingId(null);
           }}
+        />
+      )}
+
+      {approvingId != null && (
+        <ApproveModal
+          onSkip={() => {
+            act(approvingId, { status: "approved" });
+            setApprovingId(null);
+          }}
+          onSubmit={(reason, note) => {
+            act(approvingId, { status: "approved", approval_reason: reason, approval_note: note || null });
+            setApprovingId(null);
+          }}
+          onCancel={() => setApprovingId(null)}
         />
       )}
     </div>
@@ -143,6 +163,48 @@ function RejectModal({
         <div className="flex justify-end gap-2">
           <button className="px-3 py-1.5 rounded bg-zinc-700" onClick={onCancel}>Cancel</button>
           <button className="px-3 py-1.5 rounded bg-red-600" onClick={() => onSubmit(reason, note)}>Reject</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ApproveModal({
+  onCancel, onSkip, onSubmit,
+}: {
+  onCancel: () => void;
+  onSkip: () => void;
+  onSubmit: (reason: string, note: string) => void;
+}) {
+  const [reason, setReason] = useState(APPROVE_REASONS[0]);
+  const [note, setNote] = useState("");
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center" onClick={onCancel}>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold mb-1">Why approve?</h2>
+        <p className="text-xs text-zinc-500 mb-3">Optional — helps tune scoring later.</p>
+        <select
+          className="w-full bg-zinc-800 rounded p-2 mb-3"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        >
+          {APPROVE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <textarea
+          className="w-full bg-zinc-800 rounded p-2 mb-3"
+          placeholder="optional note"
+          rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <div className="flex justify-end gap-2">
+          <button className="px-3 py-1.5 rounded bg-zinc-700" onClick={onCancel}>Cancel</button>
+          <button className="px-3 py-1.5 rounded bg-zinc-600 text-zinc-200" onClick={onSkip}>
+            Approve without label
+          </button>
+          <button className="px-3 py-1.5 rounded bg-emerald-600" onClick={() => onSubmit(reason, note)}>
+            Approve
+          </button>
         </div>
       </div>
     </div>

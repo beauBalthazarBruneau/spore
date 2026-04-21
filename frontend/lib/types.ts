@@ -51,6 +51,8 @@ export type Job = {
   status: JobStatus;
   rejection_reason: string | null;
   rejection_note: string | null;
+  approval_reason: string | null;
+  approval_note: string | null;
   notes: string | null;
   resume_tex: string | null;
   cover_letter_md: string | null;

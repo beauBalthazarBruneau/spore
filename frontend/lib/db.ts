@@ -42,7 +42,9 @@ function migrate(db: Database.Database) {
   const jobColNames = new Set(jobCols.map((c) => c.name));
   if (!jobColNames.has("prescore")) db.exec(`ALTER TABLE jobs ADD COLUMN prescore REAL`);
   if (!jobColNames.has("rejected_by")) db.exec(`ALTER TABLE jobs ADD COLUMN rejected_by TEXT`);
-  // Note: backfill runs from backend/db.ts on its next boot. Frontend just adds the column.
+  if (!jobColNames.has("approval_reason")) db.exec(`ALTER TABLE jobs ADD COLUMN approval_reason TEXT`);
+  if (!jobColNames.has("approval_note")) db.exec(`ALTER TABLE jobs ADD COLUMN approval_note TEXT`);
+  // Note: rejected_by backfill runs from backend/db.ts on its next boot. Frontend just adds the column.
 
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
   const profNames = new Set(profCols.map((c) => c.name));
@@ -57,7 +59,7 @@ function migrate(db: Database.Database) {
 const JOB_SELECT = `
   SELECT j.id, j.title, c.name AS company, j.location, j.salary_range, j.url, j.source,
          j.description, j.score, j.match_explanation, j.status,
-         j.rejection_reason, j.rejection_note, j.notes,
+         j.rejection_reason, j.rejection_note, j.approval_reason, j.approval_note, j.notes,
          j.resume_tex, j.cover_letter_md, j.submitted_at, j.discovered_at, j.updated_at
   FROM jobs j LEFT JOIN companies c ON c.id = j.company_id
 `;
@@ -98,7 +100,11 @@ export function updateJob(id: number, patch: Partial<Job> & { actor?: "user" | "
 
   const fields: string[] = [];
   const values: any[] = [];
-  const writable: (keyof Job)[] = ["rejection_reason", "rejection_note", "notes"];
+  const writable: (keyof Job)[] = [
+    "rejection_reason", "rejection_note",
+    "approval_reason", "approval_note",
+    "notes",
+  ];
   for (const k of writable) {
     if (patch[k] !== undefined) { fields.push(`${k} = ?`); values.push(patch[k]); }
   }
