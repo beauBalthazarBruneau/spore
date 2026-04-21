@@ -461,6 +461,88 @@ server.registerTool(
   },
 );
 
+// ---------- Tailoring ----------
+
+server.registerTool(
+  "get_job",
+  {
+    description:
+      "Return a single job row joined with company_name and the user's base_resume_md from profile (id=1). This is the tailoring agent's single read call — job description, all existing fields, and the base resume in one shot.",
+    inputSchema: {
+      id: z.number().int().describe("Job id"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const job = db
+      .prepare(
+        `SELECT j.*, c.name AS company_name
+           FROM jobs j LEFT JOIN companies c ON c.id = j.company_id
+          WHERE j.id = ?`,
+      )
+      .get(args.id) as Record<string, unknown> | undefined;
+    if (!job) return err(`job ${args.id} not found`);
+    const profile = db.prepare(`SELECT base_resume_md FROM profile WHERE id = 1`).get() as
+      | { base_resume_md: string | null }
+      | undefined;
+    job.base_resume_md = profile?.base_resume_md ?? null;
+    return ok({ job });
+  },
+);
+
+server.registerTool(
+  "start_tailoring",
+  {
+    description:
+      "Transition a job from needs_tailoring → tailoring. Returns an error if the job is not in needs_tailoring status. Logs a tailoring_started event.",
+    inputSchema: {
+      id: z.number().int().describe("Job id"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const job = db.prepare(`SELECT id, status FROM jobs WHERE id = ?`).get(args.id) as
+      | { id: number; status: string }
+      | undefined;
+    if (!job) return err(`job ${args.id} not found`);
+    if (job.status !== "needs_tailoring") {
+      return err(`job ${args.id} is in status '${job.status}', expected 'needs_tailoring'`);
+    }
+    db.prepare(`UPDATE jobs SET status = 'tailoring', updated_at = datetime('now') WHERE id = ?`).run(args.id);
+    db.prepare(
+      `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'tailoring_started', 'claude', ?)`,
+    ).run(args.id, JSON.stringify({ job_id: args.id }));
+    return ok({ ok: true });
+  },
+);
+
+server.registerTool(
+  "save_tailored",
+  {
+    description:
+      "Write resume_md and cover_letter_md to the job row and advance status to 'tailored'. Logs a tailoring_completed event with character counts.",
+    inputSchema: {
+      id: z.number().int().describe("Job id"),
+      resume_md: z.string().describe("Tailored resume as markdown"),
+      cover_letter_md: z.string().describe("Cover letter as markdown"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const job = db.prepare(`SELECT id FROM jobs WHERE id = ?`).get(args.id) as { id: number } | undefined;
+    if (!job) return err(`job ${args.id} not found`);
+    db.prepare(
+      `UPDATE jobs SET resume_md = ?, cover_letter_md = ?, status = 'tailored', updated_at = datetime('now') WHERE id = ?`,
+    ).run(args.resume_md, args.cover_letter_md, args.id);
+    const char_count_resume = args.resume_md.length;
+    const char_count_cover_letter = args.cover_letter_md.length;
+    db.prepare(
+      `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'tailoring_completed', 'claude', ?)`,
+    ).run(args.id, JSON.stringify({ char_count_resume, char_count_cover_letter }));
+    return ok({ ok: true, char_count_resume, char_count_cover_letter });
+  },
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

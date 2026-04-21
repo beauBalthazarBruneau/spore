@@ -40,6 +40,8 @@ function migrate(db: Database.Database) {
   }
   if (!jobColNames.has("approval_reason")) db.exec(`ALTER TABLE jobs ADD COLUMN approval_reason TEXT`);
   if (!jobColNames.has("approval_note")) db.exec(`ALTER TABLE jobs ADD COLUMN approval_note TEXT`);
+  if (!jobColNames.has("resume_md")) db.exec(`ALTER TABLE jobs ADD COLUMN resume_md TEXT`);
+  if (!jobColNames.has("cover_letter_md")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_md TEXT`);
 
   // profile column migrations
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
