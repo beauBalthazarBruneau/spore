@@ -52,7 +52,7 @@ approved → needs_tailoring → tailoring → tailored → ready_to_apply → a
 - **LLM scoring** (`.claude/agents/score-jobs.md`) reads `status='prescored'`, scores with judgment, and calls `upsert_scored` which promotes (`→ new`, score ≥ 60) or demotes (`→ rejected`).
 - **Swipe UI** (`/swipe`) writes `approved` and the frontend auto-advances to `needs_tailoring` (`updateJob` in `frontend/lib/db.ts`) so the Board picks it up.
 
-The **code-vs-LLM boundary** is explicit: deterministic I/O, dedup, hard filters, and prescoring are code; fit judgment and decline reasons are the LLM. See `FIND_JOBS_PLAN.md` for the rubric.
+The **code-vs-LLM boundary** is explicit: deterministic I/O, dedup, hard filters, and prescoring are code; fit judgment and decline reasons are the LLM. See `context/FIND_JOBS_PLAN.md` for the rubric.
 
 ### MCP server (`backend/mcp/server.ts`)
 

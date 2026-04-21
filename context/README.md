@@ -34,4 +34,5 @@ Working docs for planning and architecture. This is the human-readable source of
 
 - [`PRD.md`](./PRD.md) — product requirements (all stages)
 - [`flow.md`](./flow.md) — end-to-end flow diagrams
+- [`FIND_JOBS_PLAN.md`](./FIND_JOBS_PLAN.md) — historical plan doc for the Find Jobs stage (built); holds the scoring rubric
 - [`tailor-pipeline-plan.md`](./tailor-pipeline-plan.md) — project plan for Stages 2a (Probe) + 2b (Tailor)
