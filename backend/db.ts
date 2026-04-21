@@ -38,6 +38,8 @@ function migrate(db: Database.Database) {
     db.exec(`ALTER TABLE jobs ADD COLUMN rejected_by TEXT`);
     backfillRejectedBy(db);
   }
+  if (!jobColNames.has("approval_reason")) db.exec(`ALTER TABLE jobs ADD COLUMN approval_reason TEXT`);
+  if (!jobColNames.has("approval_note")) db.exec(`ALTER TABLE jobs ADD COLUMN approval_note TEXT`);
 
   // profile column migrations
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
