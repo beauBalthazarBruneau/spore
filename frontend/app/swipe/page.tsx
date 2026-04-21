@@ -1,9 +1,10 @@
-import { listJobs } from "@/lib/db";
+import { listJobs, listNearMisses } from "@/lib/db";
 import SwipeClient from "./SwipeClient";
 
 export const dynamic = "force-dynamic";
 
 export default function SwipePage() {
   const jobs = listJobs("new");
-  return <SwipeClient initialJobs={jobs} />;
+  const nearMisses = listNearMisses(15);
+  return <SwipeClient initialJobs={jobs} nearMisses={nearMisses} />;
 }

@@ -20,13 +20,31 @@ All DB access goes through the `spore` MCP server. No raw SQL, no shell-out.
 3. **Score** each job 0–100 on fit. Rubric:
    - 40 — title/seniority alignment with `criteria.titles`
    - 25 — skills overlap with the base resume
-   - 15 — domain/industry interest per `preferences_json` and `criteria.keywords`
+   - 10 — domain/industry fit (see domain guidance below)
    - 10 — comp signal (explicit band, equity hints)
-   - 10 — company quality (stage, reputation, growth signals)
+   - 15 — company quality (stage, reputation, growth signals)
 
    The prescore already captures rough signals for these same dimensions. Your value-add is reading the JD text, understanding nuance, and adjusting. A prescore of 20 might deserve a final score of 70 if the description reveals a great match; a prescore of 80 might deserve 40 if the JD is misleading.
 
    Batch 5–10 JDs per scoring turn to save tokens. Consider sorting by `prescore DESC` so you spend tokens on the most promising candidates first.
+
+   ### Domain guidance
+
+   The user is open to **any software company**. Do not reject a role just because it's not healthcare or AI. Apply this order:
+
+   1. **AI-native companies** (Anthropic, OpenAI, Cohere, Mistral, xAI, Perplexity, Scale, Hugging Face, etc.): full domain points (10). These are strong matches regardless of the specific product area (search, embeddings, cloud partnerships, safety, developer tools, etc.).
+   2. **Top-tier software brands** (Stripe, Spotify, Airtable, Figma, Linear, Vercel, Notion, Databricks, NYT Digital, etc.): full domain points. These are strong matches on brand/quality alone.
+   3. **Other software companies** (any SaaS, fintech, devtools, consumer tech, B2B infra): 7–10 domain points. The base case.
+   4. **Healthcare**: acceptable fallback (7 points). The user is *more qualified* in healthcare but prefers non-healthcare when possible. Do not privilege it over software.
+   5. **Hard-off industries** from `criteria.exclusions.industries` (e.g. defense, gambling): the hard filters should have caught these; if one slips through, reject.
+
+   For company quality (15 points), weight it generously for:
+   - Recognizable brands (full 15)
+   - Series A/B companies with recent funding (full 15 if listed in `preferences_json.company_stage`)
+   - Strong investor backing / notable founders (12–15)
+   - Unknown small companies: 5–8
+
+   **Don't** write decline reasons like "no healthcare alignment" or "not core AI domain" — those were common mistakes in earlier runs.
 
 4. **Write results.** Call `mcp__spore__upsert_scored` with:
    ```

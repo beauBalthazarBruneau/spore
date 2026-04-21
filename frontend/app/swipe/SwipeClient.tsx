@@ -7,9 +7,16 @@ const REJECT_REASONS = [
   "posting_not_found", "other",
 ];
 
-export default function SwipeClient({ initialJobs }: { initialJobs: Job[] }) {
+export default function SwipeClient({
+  initialJobs,
+  nearMisses = [],
+}: {
+  initialJobs: Job[];
+  nearMisses?: Job[];
+}) {
   const [queue, setQueue] = useState(initialJobs);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
+  const [reviewingNearMisses, setReviewingNearMisses] = useState(false);
   const current = queue[0];
 
   const act = useCallback(async (id: number, patch: Record<string, unknown>) => {
@@ -38,13 +45,27 @@ export default function SwipeClient({ initialJobs }: { initialJobs: Job[] }) {
       <div className="p-10 text-center text-zinc-400">
         <p className="text-xl">No new jobs to review.</p>
         <p className="text-sm mt-2">Run the Find Jobs agent to discover more.</p>
+        {nearMisses.length > 0 && (
+          <button
+            className="mt-6 px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 text-sm"
+            onClick={() => {
+              setQueue(nearMisses);
+              setReviewingNearMisses(true);
+            }}
+          >
+            Review {nearMisses.length} near misses
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <div className="text-xs text-zinc-500 mb-2">{queue.length} to review · ← reject · → approve · ↑ skip</div>
+      <div className="text-xs text-zinc-500 mb-2">
+        {reviewingNearMisses && <span className="text-amber-400 mr-2">NEAR MISSES</span>}
+        {queue.length} to review · ← reject · → approve · ↑ skip
+      </div>
       <article className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
         <header className="mb-4">
           <h1 className="text-2xl font-semibold">{current.title}</h1>

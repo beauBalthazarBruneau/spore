@@ -87,7 +87,7 @@ export async function run(db: Database.Database): Promise<RunReport> {
     }
     const filter = applyHardFilters(p, criteria);
     if (!filter.passed) {
-      upsertJob(db, p, { status: "rejected", rejection_reason: filter.reason });
+      upsertJob(db, p, { status: "rejected", rejection_reason: filter.reason, rejected_by: "filter" });
       rejected++;
       continue;
     }
@@ -106,7 +106,7 @@ export async function run(db: Database.Database): Promise<RunReport> {
 
   let stale = 0;
   const markStale = db.prepare(
-    `UPDATE jobs SET status = 'rejected', rejection_reason = 'posting removed from ATS'
+    `UPDATE jobs SET status = 'rejected', rejection_reason = 'posting removed from ATS', rejected_by = 'filter'
      WHERE id = ? AND status IN (${[...STALE_ELIGIBLE].map(() => "?").join(",")})`,
   );
   for (const c of watched) {
