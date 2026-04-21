@@ -20,6 +20,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^11.3.0",
+    "md-to-pdf": "^5.2.5",
     "zod": "^4.3.6"
   }
 }
