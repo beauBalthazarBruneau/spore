@@ -341,7 +341,7 @@ server.registerTool(
     const db = getDb();
     const threshold = args.threshold ?? 60;
     const update = db.prepare(
-      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?, rejection_reason = ? WHERE id = ?`,
+      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?, rejection_reason = ?, rejected_by = ? WHERE id = ?`,
     );
     let promoted = 0;
     let declined = 0;
@@ -350,7 +350,8 @@ server.registerTool(
       const status = s.score >= threshold ? "new" : "rejected";
       const rejection_reason =
         status === "rejected" ? s.decline_reason ?? `score ${s.score} < ${threshold}` : null;
-      const info = update.run(status, s.score, s.match_explanation ?? null, rejection_reason, s.id);
+      const rejected_by = status === "rejected" ? "agent" : null;
+      const info = update.run(status, s.score, s.match_explanation ?? null, rejection_reason, rejected_by, s.id);
       if (info.changes === 0) {
         not_found.push(s.id);
         continue;

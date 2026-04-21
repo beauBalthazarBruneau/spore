@@ -34,6 +34,10 @@ function migrate(db: Database.Database) {
   const jobCols = db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>;
   const jobColNames = new Set(jobCols.map((c) => c.name));
   if (!jobColNames.has("prescore")) db.exec(`ALTER TABLE jobs ADD COLUMN prescore REAL`);
+  if (!jobColNames.has("rejected_by")) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN rejected_by TEXT`);
+    backfillRejectedBy(db);
+  }
 
   // profile column migrations
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
@@ -70,6 +74,45 @@ function migrate(db: Database.Database) {
       COMMIT;
     `);
   }
+}
+
+/** Backfill the rejected_by column on existing rejected jobs using event history.
+ *  - rejections with actor='user' → 'user'
+ *  - rejections with actor='system' → 'filter' (hard-filter pre-Swipe rejections)
+ *  - rejections with actor='claude' → 'agent' (LLM score-jobs agent)
+ *  Jobs with no event (legacy rows) fall back to heuristics on rejection_reason. */
+export function backfillRejectedBy(db: Database.Database) {
+  const USER_REASONS = ["wrong_location", "salary_too_low", "role_mismatch", "posting_not_found", "other"];
+  const FILTER_HINTS = ["excluded", "below floor", "posting removed", "not in accepted locations"];
+
+  const rows = db
+    .prepare(`SELECT id, rejection_reason FROM jobs WHERE status = 'rejected' AND rejected_by IS NULL`)
+    .all() as Array<{ id: number; rejection_reason: string | null }>;
+
+  const actorFor = db.prepare(
+    `SELECT actor FROM events
+     WHERE entity_type = 'job' AND entity_id = ? AND action LIKE 'status:%->rejected'
+     ORDER BY id DESC LIMIT 1`,
+  );
+  const update = db.prepare(`UPDATE jobs SET rejected_by = ? WHERE id = ?`);
+
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      const event = actorFor.get(row.id) as { actor: string } | undefined;
+      let rejectedBy: string | null = null;
+      if (event) {
+        rejectedBy = event.actor === "user" ? "user" : event.actor === "claude" ? "agent" : "filter";
+      } else {
+        // No event — use rejection_reason heuristics
+        const reason = row.rejection_reason?.toLowerCase() ?? "";
+        if (USER_REASONS.includes(row.rejection_reason ?? "")) rejectedBy = "user";
+        else if (FILTER_HINTS.some((h) => reason.includes(h))) rejectedBy = "filter";
+        else if (reason) rejectedBy = "agent"; // LLM wrote a free-text reason
+      }
+      if (rejectedBy) update.run(rejectedBy, row.id);
+    }
+  });
+  tx();
 }
 
 export const DB_FILE = DB_PATH;

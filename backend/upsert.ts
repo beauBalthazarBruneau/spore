@@ -18,6 +18,7 @@ export interface UpsertOpts {
   match_explanation?: string;
   rejection_reason?: string;
   decline_reason?: string;
+  rejected_by?: "filter" | "agent" | "user";
 }
 
 // Returns { id, inserted } — inserted=false if the job already existed (dedup by source+source_job_id or url).
@@ -39,8 +40,8 @@ export function upsertJob(
       `INSERT INTO jobs (
         source, source_job_id, url, title, company_id, location, remote,
         salary_min, salary_max, salary_range, posted_at, description, raw_json,
-        score, match_explanation, status, rejection_reason
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        score, match_explanation, status, rejection_reason, rejected_by
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       p.source,
@@ -60,6 +61,7 @@ export function upsertJob(
       opts.match_explanation ?? null,
       opts.status ?? "new",
       opts.rejection_reason ?? opts.decline_reason ?? null,
+      opts.rejected_by ?? null,
     );
   return { id: Number(info.lastInsertRowid), inserted: true };
 }
@@ -78,12 +80,13 @@ export function upsertScoredJob(
     .get(p.source, p.source_job_id, p.url) as { id: number } | undefined;
   if (existing) {
     db.prepare(
-      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?, rejection_reason = ? WHERE id = ?`,
+      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?, rejection_reason = ?, rejected_by = ? WHERE id = ?`,
     ).run(
       opts.status,
       opts.score,
       opts.match_explanation ?? null,
       opts.rejection_reason ?? opts.decline_reason ?? null,
+      opts.rejected_by ?? null,
       existing.id,
     );
     return { id: existing.id, inserted: false };

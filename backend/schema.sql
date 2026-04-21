@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   )),
   rejection_reason TEXT,
   rejection_note TEXT,
+  rejected_by TEXT CHECK (rejected_by IN ('filter','agent','user') OR rejected_by IS NULL),
   pipeline_step TEXT,
   outcome TEXT,
 

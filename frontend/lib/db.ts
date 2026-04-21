@@ -41,6 +41,8 @@ function migrate(db: Database.Database) {
   const jobCols = db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>;
   const jobColNames = new Set(jobCols.map((c) => c.name));
   if (!jobColNames.has("prescore")) db.exec(`ALTER TABLE jobs ADD COLUMN prescore REAL`);
+  if (!jobColNames.has("rejected_by")) db.exec(`ALTER TABLE jobs ADD COLUMN rejected_by TEXT`);
+  // Note: backfill runs from backend/db.ts on its next boot. Frontend just adds the column.
 
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
   const profNames = new Set(profCols.map((c) => c.name));
@@ -74,6 +76,17 @@ export function getJob(id: number): Job | undefined {
   return getDb().prepare(`${JOB_SELECT} WHERE j.id = ?`).get(id) as Job | undefined;
 }
 
+/** Top-scoring agent-rejected jobs — for review when the main queue is empty.
+ *  Excludes filter rejections (pre-Swipe) and user swipe rejections. */
+export function listNearMisses(limit = 15): Job[] {
+  return getDb()
+    .prepare(
+      `${JOB_SELECT} WHERE j.status = 'rejected' AND j.rejected_by = 'agent' AND j.score IS NOT NULL
+       ORDER BY j.score DESC, j.id DESC LIMIT ?`,
+    )
+    .all(limit) as Job[];
+}
+
 export function updateJob(id: number, patch: Partial<Job> & { actor?: "user" | "claude" | "system" }) {
   const db = getDb();
   const current = getJob(id);
@@ -90,6 +103,12 @@ export function updateJob(id: number, patch: Partial<Job> & { actor?: "user" | "
     if (patch[k] !== undefined) { fields.push(`${k} = ?`); values.push(patch[k]); }
   }
   fields.push(`status = ?`); values.push(nextStatus);
+  // Stamp rejected_by when this transition rejects the job
+  if (patch.status === "rejected") {
+    const actor = patch.actor ?? "user";
+    fields.push(`rejected_by = ?`);
+    values.push(actor === "claude" ? "agent" : actor === "system" ? "filter" : "user");
+  }
   fields.push(`updated_at = datetime('now')`);
   db.prepare(`UPDATE jobs SET ${fields.join(", ")} WHERE id = ?`).run(...values, id);
 
