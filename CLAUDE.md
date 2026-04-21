@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Spore (package name `autoapply`) is a local, self-hosted job-application automator. The sqlite DB is the system of record; Claude Code agents and a Next.js UI both read and write the same SQLite file through typed interfaces. Claude code agents use an MCP server to interact with the db exclusively. 
+Spore (package name `autoapply`) is a local, self-hosted job-application automator. The sqlite DB is the system of record; Claude Code agents and a Next.js UI both read and write the same SQLite file through typed interfaces. Claude code agents use an MCP server to interact with the db exclusively.
+
+Product context (PRD, flow diagrams, per-project plans) lives in [`context/`](./context/README.md). Read that before starting any non-trivial work — the status tags tell you what's `[decided]` vs `[open]`.
 
 ## Commands
 
