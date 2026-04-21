@@ -17,6 +17,7 @@ import { getDb } from "../db";
 import { sources } from "../sources";
 import { upsertJob } from "../upsert";
 import type { RawPosting } from "../sources/types";
+import { renderJobPdfs } from "../pdf";
 
 const SUPPORTED_ATS = ["greenhouse", "lever", "ashby", "rippling"] as const;
 const ATS_SOURCE = z.enum(SUPPORTED_ATS);
@@ -540,6 +541,28 @@ server.registerTool(
       `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'tailoring_completed', 'claude', ?)`,
     ).run(args.id, JSON.stringify({ char_count_resume, char_count_cover_letter }));
     return ok({ ok: true, char_count_resume, char_count_cover_letter });
+  },
+);
+
+// ---------- PDF rendering ----------
+
+server.registerTool(
+  "render_pdf",
+  {
+    description:
+      "Render the tailored resume and cover letter for a job to PDF. Reads resume_md and cover_letter_md from the job row, renders both to PDF, stores the BLOBs in resume_pdf/cover_letter_pdf, and logs a pdf_rendered event. Returns byte counts.",
+    inputSchema: {
+      job_id: z.number().int().describe("Job id"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    try {
+      const result = await renderJobPdfs(db, args.job_id);
+      return ok(result);
+    } catch (e) {
+      return err((e as Error).message);
+    }
   },
 );
 
