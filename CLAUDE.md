@@ -14,6 +14,7 @@ Root (backend / orchestrators / scripts):
 - `npx tsx backend/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]` — scrape funding news for recently-funded companies, output candidates (does not write to DB)
 - `npx tsx backend/orchestrate.ts --name discover-jobs-by-companies` — fetch postings from watched companies' ATS boards → `status='fetched'`
 - `npx tsx backend/orchestrate.ts --name prescore` — deterministic prescore over `status='fetched'` → `status='prescored'`
+- `npx tsx backend/reports/score-calibration.ts` — print prescore and LLM-score calibration vs user approvals (bucketed approval rate + Pearson correlation)
 - `npx tsx backend/mcp/server.ts` — run the `spore` MCP server over stdio (normally launched by `.mcp.json`)
 
 Frontend (`frontend/` workspace, also reachable from root as `npm run dev`):
