@@ -7,12 +7,14 @@
 //   tsx backend/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]
 //   tsx backend/orchestrate.ts --name discover-jobs-by-companies
 //   tsx backend/orchestrate.ts --name prescore
+//   tsx backend/orchestrate.ts --name tailor [--limit N]
 
 import { getDb } from "./db";
 import * as discoverJobsByCompanies from "./fetchers/discover-jobs-by-companies";
 import * as discoverJobsGeneric from "./fetchers/discover-jobs-generic";
 import * as prescore from "./prescore";
 import * as discoverCompanies from "./fetchers/discover-companies";
+import * as tailor from "./fetchers/tailor";
 
 interface Stage {
   run: (db: import("better-sqlite3").Database, extra?: Record<string, string>) => Promise<object>;
@@ -34,6 +36,7 @@ const fetchers: Record<string, Stage> = {
   "discover-jobs-by-companies": discoverJobsByCompanies,
   "discover-jobs-generic": discoverJobsGeneric,
   prescore,
+  tailor,
 };
 
 function parseArgs(argv: string[]) {
@@ -75,6 +78,11 @@ async function main() {
     const payload = { ...report, duration_ms };
     logEvent.run("system", 0, `${args.name}_fetch_run`, "system", JSON.stringify(payload));
     console.log(`[${args.name}] ${JSON.stringify(payload)}`);
+    // Exit non-zero if any jobs failed (e.g. tailor stage)
+    if (typeof (report as Record<string, unknown>).failed === "number" &&
+        (report as Record<string, unknown>).failed as number > 0) {
+      process.exit(1);
+    }
   } catch (err) {
     const duration_ms = Date.now() - start;
     const payload = { error: (err as Error).message, duration_ms };

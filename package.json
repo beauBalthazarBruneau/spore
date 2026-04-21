@@ -18,6 +18,7 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^11.3.0",
     "md-to-pdf": "^5.2.5",
