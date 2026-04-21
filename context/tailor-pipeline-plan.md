@@ -58,9 +58,45 @@ Putting them in the same stage would mean every tailor failure requires re-probi
 
 ---
 
+## Data ownership
+
+**All pipeline artifacts live in the SQLite DB. Nothing the user (or any downstream stage) cares about is ever written to disk.**
+
+This is not a stylistic preference; it's a hard architectural rule. The DB is the system of record for:
+
+- The master resume (in `profile.base_resume_json`).
+- Every tailored resume, cover letter, application answer, and rendered PDF (on the `jobs` row that owns them).
+- The probe record for every application.
+- The reusable question-answer bank.
+- Every log/event emitted by the pipeline.
+
+This has three downstream consequences that matter:
+
+1. **Agents interact with artifacts only through the MCP server.** No `fs.readFile`, no local paths, no `scripts/output/` directories. If an agent needs something, there's an MCP tool for it.
+2. **Renderers write PDFs directly to the DB.** The render step is part of the write path, not a post-process. After a successful render, `jobs.resume_pdf` (a BLOB column) contains the final bytes. No intermediate `data/output/job_123.pdf` file exists.
+3. **Transient tool-side temp files are allowed in `/tmp`**, because some renderers (notably `pdflatex`) can't run without a scratch directory. Those must be cleaned up per-invocation and never escape the process. The rule is about *persistent artifacts*, not about what a subprocess needs while executing.
+
+The single exception: `data/spore.db` itself lives on disk (it's a file). That's the boundary.
+
+---
+
 ## Phase 1: Probe
 
 **Goal**: For every approved job, build a structured description of what the employer's application form actually requires, so Tailor knows what to produce and Submit knows what to submit.
+
+### Inputs and outputs
+
+**Reads (via MCP):**
+- `jobs.url` — the application URL.
+- `jobs.source` — ATS hint, if the Find Jobs stage already identified one.
+- External, non-DB: HTTP fetches to known ATS endpoints; headless browser for the generic path.
+
+**Writes (via MCP):**
+- `jobs.application_form_json` — the structured probe record (see below).
+- `jobs.status` — `needs_tailoring` on success, `probe_failed` with a reason on failure.
+- `events` — one `probe_applications_run` event per orchestrator invocation, with counts and duration.
+
+Nothing from this phase is written to disk. The headless browser runs in memory; any captured artifacts (HARs, screenshots) are either written to the DB as debugging attachments or discarded.
 
 ### What Probe produces
 
@@ -94,6 +130,26 @@ Probe is fundamentally a data-extraction problem, not a judgment problem. Classi
 
 **Goal**: Given an approved job, the user's master materials, and the probe record, produce the exact artifacts the form requires — nothing more, nothing less — and surface them for review.
 
+### Inputs and outputs
+
+**Reads (via MCP):**
+- `jobs.description`, `jobs.title`, `jobs.application_form_json`, `companies.name`.
+- `profile.base_resume_json` — the master resume (sacred, read-only for the agent).
+- `profile.criteria_json`, `profile.preferences_json` — to inform framing without dictating content.
+- `profile.demographics_json` — read but never surfaced to the LLM; consumed by Submit.
+- `question_answers` — approved, reusable entries consulted before any fresh generation.
+
+**Writes (via MCP):**
+- `jobs.resume_json` — the tailored resume data. Always written.
+- `jobs.resume_tex`, `jobs.resume_pdf` — produced by the render step (see 2.4) and written to the DB directly as part of the same MCP call that advances status.
+- `jobs.cover_letter_md`, `jobs.cover_letter_pdf` — only if `application_form_json` shows a cover letter slot.
+- `jobs.application_answers_json` — only if the form has custom questions; keyed by question id.
+- `question_answers` — new rows when the agent generates an answer it marks reusable; bumps `use_count` and `last_used_*` on hits against existing rows.
+- `jobs.status` — `tailored` on full success; stays `tailoring` (with an error note) on render or validation failure.
+- `events` — one `tailor_run` event per agent invocation.
+
+Nothing from this phase is written to disk. `pdflatex` uses a per-invocation temp directory in `/tmp` that is cleaned up before the render step returns — the PDF bytes are piped straight into `jobs.resume_pdf` and the temp dir is gone. No `data/output/` directory, no sidecar tex file, no cached renders outside the row.
+
 ### What Tailor produces
 
 Conditional on the probe record. For each job:
@@ -111,7 +167,7 @@ Conditional on the probe record. For each job:
 
 **2.3 Custom-question answering with a reusable bank.** The first time a user is asked "why this company," the agent generates an answer. The user reviews and edits. The approved answer goes into a bank of reusable answers keyed by a normalized fingerprint of the question. The next time the same question appears on a different form, the bank hit replaces generation entirely. "Why this company" is company-specific and not reusable, but "work authorization," "years of React experience," "salary expectations," and "how did you hear about us" are — and they are the long tail.
 
-**2.4 Render.** The tailored resume data is pure JSON until a deterministic render step emits the final PDF. This separation means the generation step doesn't have to understand LaTeX, and the render step can be tested independently. A render failure leaves the job in an intermediate state with a clear error — it doesn't promote a half-baked artifact.
+**2.4 Render.** The tailored resume data is pure JSON until a deterministic render step emits the final PDF. This separation means the generation step doesn't have to understand LaTeX, and the render step can be tested independently. A render failure leaves the job in an intermediate state with a clear error — it doesn't promote a half-baked artifact. The render step should also automatically put the resumepdf into the db.
 
 **2.5 Review gate.** Every tailored package advances to a state where the user can inspect and approve. Edits to any artifact can propagate back: edits to answer bank entries update the bank; edits to the resume update only this application's tailored copy (the master is sacred).
 
@@ -127,14 +183,14 @@ Tailor is where judgment lives. Picking which bullets matter, how to frame prior
 2. **Master materials are sacred.** The user's master resume, demographic info, and approved answer bank are never modified by the agent. Tailored copies live on individual job rows.
 3. **Validation prevents fabrication.** Tailored resumes that introduce new companies, roles, or education are rejected before render. This is a hard constraint, not an LLM instruction.
 4. **Deterministic code renders, not the LLM.** The LLM produces structured data. Templates, macros, and formatting are code. This prevents format drift and makes the output auditable.
-5. **The answer bank is a first-class artifact.** It's not a cache — it's the user's growing library of themselves. It outlives any individual application.
-6. **Every artifact is DB-resident.** No files on disk, no sidecar folders, no generated assets outside the job row. Agents interact with artifacts only through the MCP interface.
+5. **The answer bank is a first-class artifact.** It's not a cache — it's the user's growing library of themselves. It outlives any individual application. Edits to bank entries can propagate to already-filled applications when the question fingerprints match closely enough (see Open Questions on fingerprinting).
+6. **DB is the system of record.** See [Data ownership](#data-ownership). No pipeline artifact is ever written to disk outside the DB file itself.
 
 ---
 
 ## Dependencies and risks
 
-- **pdflatex** becomes a system-level dependency. Missing or misconfigured latex breaks the render step. Needs to fail clearly and early, and be documented. (Do we definitely want to go with latex? are there other ones that are better???)
+- **pdflatex** becomes a system-level dependency. Missing or misconfigured latex breaks the render step. Needs to fail clearly and early, and be documented. Worth genuinely reconsidering before we build — see Open Questions ("Do we have to use LaTeX?").
 - **ATS endpoint stability** — the public endpoints we rely on for Probe are stable in practice but uncontractual. When they break, probes silently degrade to generic-browser. Monitoring should surface a shift in the Known-ATS vs. Generic-browser split.
 - **LLM drift in the answer bank** — if the agent generates subtly different answers to similar questions, the bank fragments and loses its value. The fingerprint normalization needs to be neither too loose (wrong answers matched) nor too strict (no matches).
 - **Browser automation flakiness** — generic-browser probe will be the noisiest component. Needs retries, timeouts, and a clean "give up" path to `probe_failed`.
@@ -143,8 +199,14 @@ Tailor is where judgment lives. Picking which bullets matter, how to frame prior
 
 ## Open questions
 
-- **How aggressive should question fingerprinting be?** Exact-match is useless; stemming + normalization is standard; semantic match (embed the question, nearest-neighbor the bank) is powerful but heavier. Start with stemming, revisit once we see real overlap rates. I agree.
-- **Do edits to answer-bank entries propagate to previously-filled applications?** Yes, If the questions are similar enough
+- **Do we have to use LaTeX?** The user's master is in LaTeX and the template is good, but `pdflatex` is a heavy system dependency and an awkward failure mode. Real alternatives worth weighing:
+  - **Typst** — modern, fast, much nicer syntax, but the ecosystem is young and we'd be re-authoring the template.
+  - **HTML/CSS → PDF via Playwright** — we're already pulling in Playwright for Probe, so zero additional install cost. Modern styling, web-tool ergonomics, but we'd re-author the template in HTML/CSS and accept slightly less precise typographic control.
+  - **Pandoc** — a markdown-first pipeline; it still uses LaTeX under the hood for PDF so it doesn't escape the dependency.
+  - **React-PDF / programmatic libs** — deterministic but ugly templates.
+  - Best candidate to consider seriously: Playwright-based HTML/CSS → PDF, on the strength of already-installed infra. Decision needed before building the render step.
+- **How aggressive should question fingerprinting be?** Exact-match is useless; stemming + normalization is standard; semantic match (embed the question, nearest-neighbor the bank) is powerful but heavier. **Decided:** start with stemming, revisit once we see real overlap rates.
+- **Do edits to answer-bank entries propagate to previously-filled applications?** **Decided:** yes, when the fingerprints match closely enough. Implementation needs to define "closely enough" (exact fingerprint hit vs. threshold on a similarity score), and needs to visibly flag the propagated change so the user isn't surprised.
 - **Is there a Tailor-level review checkpoint before generation?** E.g., does the agent show its proposed "changes plan" before producing artifacts? Probably not in v1 — the review gate on output is the single user-facing checkpoint. But if generations are frequently wrong, we may want it.
 - **How do we handle postings that want multiple resumes** (general + specific)? Edge case, punt to v1.5.
 
