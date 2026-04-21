@@ -66,7 +66,7 @@ const JOB_SELECT = `
   SELECT j.id, j.title, c.name AS company, j.location, j.salary_range, j.url, j.source,
          j.description, j.score, j.match_explanation, j.status,
          j.rejection_reason, j.rejection_note, j.approval_reason, j.approval_note, j.notes,
-         j.resume_tex, j.cover_letter_md, j.submitted_at, j.discovered_at, j.updated_at
+         j.resume_tex, j.resume_md, j.cover_letter_md, j.submitted_at, j.discovered_at, j.updated_at
   FROM jobs j LEFT JOIN companies c ON c.id = j.company_id
 `;
 
@@ -110,6 +110,7 @@ export function updateJob(id: number, patch: Partial<Job> & { actor?: "user" | "
     "rejection_reason", "rejection_note",
     "approval_reason", "approval_note",
     "notes",
+    "resume_md", "cover_letter_md",
   ];
   for (const k of writable) {
     if (patch[k] !== undefined) { fields.push(`${k} = ?`); values.push(patch[k]); }
@@ -133,6 +134,19 @@ export function updateJob(id: number, patch: Partial<Job> & { actor?: "user" | "
     JSON.stringify({ from: current.status, to: nextStatus, rejection_reason: patch.rejection_reason ?? null }),
   );
   return getJob(id)!;
+}
+
+/** Transition a job from needs_tailoring → tailoring and log a tailoring_started event. */
+export function startTailoring(id: number): { ok: true } | { error: string; status: number } {
+  const db = getDb();
+  const job = getJob(id);
+  if (!job) return { error: "not found", status: 404 };
+  if (job.status !== "needs_tailoring") return { error: `job is ${job.status}, expected needs_tailoring`, status: 409 };
+  db.prepare(`UPDATE jobs SET status = 'tailoring', updated_at = datetime('now') WHERE id = ?`).run(id);
+  db.prepare(
+    `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'tailoring_started', 'user', ?)`,
+  ).run(id, JSON.stringify({ from: "needs_tailoring", to: "tailoring" }));
+  return { ok: true };
 }
 
 export function getProfile() {
