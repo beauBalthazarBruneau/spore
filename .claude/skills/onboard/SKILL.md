@@ -22,14 +22,16 @@ Interactive onboarding skill that walks a new user through setting up their prof
 
    Write via `mcp__spore__upsert_profile` with `links_json`.
 
-4. **Base resume** — ask the user to paste their resume, or point you to a file to read. Convert it to clean markdown and write `base_resume_md` via `mcp__spore__upsert_profile`. If they give you a file path, read it and convert to markdown. If they paste raw text, clean it up into structured markdown with sections (Summary, Experience, Education, Skills, etc.).
+4. **Base resume** — ask the user to paste their resume, or point you to a file to read. Convert it to clean markdown and write `base_resume_md` via `mcp__spore__upsert_profile`. If they give you a file path, read it and convert to markdown. If they paste raw text, clean it up into structured markdown with sections (Summary, Experience, Education, Skills, etc.). If the user hasn't written a resume yet, point them to `data.example/base/resume.md` as a template to fill in.
 
 5. **Job search criteria** — this is the most important section. Ask conversationally:
-   - What job titles are you targeting? (collect as array)
+   - What job titles are you targeting? (collect as array — e.g., "Software Engineer", "Data Analyst", "Designer")
    - What locations are you open to? (collect as array, include "Remote" if applicable)
    - What keywords describe your ideal role? (collect as array)
    - What's your minimum salary? (number)
    - Remote preference: "remote", "hybrid", or "onsite"?
+
+   Remind the user that `data.example/profile.json` shows an example of filled-in criteria.
 
    Write via `mcp__spore__upsert_profile` with `criteria_json`.
 
