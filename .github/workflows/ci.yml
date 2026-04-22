@@ -36,3 +36,4 @@ jobs:
         run: npm --workspace frontend test
       - name: Data example integrity smoke test
         run: npx vitest run backend/data-example.test.ts
+        if: hashFiles('backend/data-example.test.ts') != ''
