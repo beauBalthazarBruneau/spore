@@ -6,6 +6,7 @@
     "frontend"
   ],
   "scripts": {
+    "setup": "bash scripts/setup.sh",
     "discover": "tsx backend/orchestrate.ts --name discover-companies",
     "dev": "npm --workspace frontend run dev",
     "test": "vitest run"
