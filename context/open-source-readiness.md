@@ -51,6 +51,36 @@ A new user should be able to clone, run one command, and have Spore working with
 
 ---
 
+## Branch protection (configure at launch time)
+
+These are GitHub repo settings, not code changes — do them the day you make the repo public.
+
+**Go to: Settings → Branches → Add branch ruleset (or "Add rule" on the classic UI) → target: `main`**
+
+### Must-have rules
+
+- **Require a pull request before merging** — prevents direct pushes to main. For a solo project, set required approvals to **0** (you just want the PR format + CI, not a second reviewer).
+- **Require status checks to pass** — add the `test` job from `.github/workflows/ci.yml`. Check "Require branches to be up to date before merging" so stale PRs can't sneak past a CI fix.
+- **Block force pushes** — prevents `git push --force` rewriting public history.
+- **Block deletions** — prevents `git branch -D main` accidents.
+
+### Recommended
+
+- **Require linear history** — enforces squash-or-rebase merges, keeps `git log --oneline` on main readable. Pairs well with GitHub's "Squash and merge" button default.
+- **Include administrators** — applies the rules to yourself too. Easy to forget, but this is the one that actually prevents the accidental `git push origin main` from your local machine.
+
+### Skip for now
+
+- Required reviewers > 0 — unnecessary overhead for a solo maintainer; revisit if you take contributors.
+- Signed commits — adds friction with no meaningful security benefit at this scale.
+- Restrict who can push — covered by "require PR" already.
+
+### After enabling
+
+Update `CONTRIBUTING.md` to note that direct pushes to main are blocked and all changes go through PRs with CI passing.
+
+---
+
 ## Nice-to-have (not blocking)
 
 - [ ] Linear / project tracking cleanup — internal ticket references in commit messages are fine; make sure no internal URLs or workspace names appear in code comments or docs.
