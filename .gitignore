@@ -1,6 +1,7 @@
 node_modules/
 data/
 .next/
+frontend/.next/
 .env
 .env.local
 .DS_Store
@@ -9,3 +10,4 @@ dist/
 build/
 *.tsbuildinfo
 .claude/settings.local.json
+.claude/worktrees/
