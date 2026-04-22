@@ -1,6 +1,8 @@
-name: ci
+name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -11,8 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: '20'
+          cache: 'npm'
       - run: npm ci
       - name: Backend tsc
         run: npx tsc --noEmit -p tsconfig.json
@@ -25,10 +27,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: '20'
+          cache: 'npm'
       - run: npm ci
       - name: Backend tests
         run: npm test
       - name: Frontend tests
         run: npm --workspace frontend test
+      - name: Data example integrity smoke test
+        run: npx vitest run backend/data-example.test.ts
+        if: hashFiles('backend/data-example.test.ts') != ''

@@ -97,4 +97,26 @@ describe("applyHardFilters", () => {
     );
     expect(r.passed).toBe(true);
   });
+
+  it("rejects when description contains an excluded description keyword", () => {
+    const r = applyHardFilters(
+      { ...base, description: "This role requires security clearance required to work on classified programs." },
+      { exclusions: { description_keywords: ["security clearance"] } },
+    );
+    expect(r.passed).toBe(false);
+    expect(r.reason).toMatch(/description excluded keyword/);
+  });
+
+  it("rejected postings have a non-null, non-empty reason string", () => {
+    const r = applyHardFilters(base, { exclusions: { companies: ["acme"] } });
+    expect(r.passed).toBe(false);
+    expect(typeof r.reason).toBe("string");
+    expect(r.reason!.length).toBeGreaterThan(0);
+  });
+
+  it("passing postings have passed: true and no rejection reason", () => {
+    const r = applyHardFilters(base, {});
+    expect(r.passed).toBe(true);
+    expect(r.reason).toBeUndefined();
+  });
 });

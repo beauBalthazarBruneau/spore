@@ -43,6 +43,15 @@ describe("keywordsMatch", () => {
     expect(keywordsMatch(null, ["react"])).toBe(0);
     expect(keywordsMatch("something", undefined)).toBe(0);
   });
+
+  it("returns 0 when criteria has 0 keywords but description is non-empty", () => {
+    expect(keywordsMatch("We use React and TypeScript", [])).toBe(0);
+  });
+
+  it("returns the max keyword score (25) when all keywords match", () => {
+    // 4/4 keywords hit → Math.round(25 * 4/4) = 25, capped at 25
+    expect(keywordsMatch("We use react typescript postgresql graphql", ["react", "typescript", "postgresql", "graphql"])).toBe(25);
+  });
 });
 
 describe("seniorityScore", () => {
@@ -71,6 +80,22 @@ describe("compSignal", () => {
   it("gives 0 when no salary info", () => {
     expect(compSignal(null, null)).toBe(0);
   });
+
+  it("gives 10 when salary_min present but salary_max null", () => {
+    expect(compSignal(120000, null)).toBe(10);
+  });
+
+  it("gives 10 when both salary_min and salary_range are present", () => {
+    expect(compSignal(120000, "$120k-$160k")).toBe(10);
+  });
+
+  it("gives 10 when salary_range string mentions a dollar amount like $150k", () => {
+    expect(compSignal(null, "$150k")).toBe(10);
+  });
+
+  it("gives 0 when salary_range is empty string and salary_min is null", () => {
+    expect(compSignal(null, "")).toBe(0);
+  });
 });
 
 describe("recencyScore", () => {
@@ -91,6 +116,23 @@ describe("recencyScore", () => {
 
   it("gives 5 for unknown dates", () => {
     expect(recencyScore(null)).toBe(5);
+  });
+
+  it("gives 5 for a posting exactly 1 day old (still within 30-day window, should be 10)", () => {
+    // 1 day old is within the <=30 day window → score is 10
+    const oneDayAgo = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+    expect(recencyScore(oneDayAgo)).toBe(10);
+  });
+
+  it("gives 5 for a posting 31 days old (past the 30-day threshold, within 90-day band)", () => {
+    // 31 days old: ageDays > 30 and <= 90 → score is 5
+    const thirtyOneDaysAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+    expect(recencyScore(thirtyOneDaysAgo)).toBe(5);
+  });
+
+  it("gives 5 for null posted_at (default fallback)", () => {
+    expect(recencyScore(null)).toBe(5);
+    expect(recencyScore(undefined)).toBe(5);
   });
 });
 
@@ -118,5 +160,39 @@ describe("computePrescore", () => {
       {},
     );
     expect(score).toBe(20 + 0 + 7 + 0 + 5);
+  });
+
+  it("scores ≥ 60 for a strong match: matching title, keywords, senior seniority, explicit salary, recent date", () => {
+    const score = computePrescore(
+      {
+        title: "Senior Software Engineer",
+        description: "We primarily use TypeScript, React, and PostgreSQL. Remote-friendly team.",
+        posted_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        salary_min: 160000,
+        salary_range: "$160k-$200k",
+      },
+      {
+        titles: ["Senior Software Engineer"],
+        keywords: ["typescript", "react", "postgresql"],
+      },
+    );
+    expect(score).toBeGreaterThanOrEqual(60);
+  });
+
+  it("scores < 30 for a weak match: no title match, no keywords, junior seniority, no salary, 60 days old", () => {
+    const score = computePrescore(
+      {
+        title: "Junior Marketing Coordinator",
+        description: "Coordinate marketing campaigns and events.",
+        posted_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+        salary_min: null,
+        salary_range: null,
+      },
+      {
+        titles: ["Senior Software Engineer"],
+        keywords: ["typescript", "react", "postgresql"],
+      },
+    );
+    expect(score).toBeLessThan(30);
   });
 });
