@@ -579,6 +579,89 @@ server.registerTool(
   },
 );
 
+// ---------- Pipeline / Mycel ----------
+
+server.registerTool(
+  "pipeline_summary",
+  {
+    description: "Return a count of jobs grouped by status. Use this to answer questions like 'how many jobs do I have in review?' or give a full pipeline overview.",
+    inputSchema: {},
+  },
+  async () => {
+    const rows = getDb()
+      .prepare(`SELECT status, COUNT(*) AS count FROM jobs GROUP BY status ORDER BY count DESC`)
+      .all() as { status: string; count: number }[];
+    const total = rows.reduce((sum, r) => sum + r.count, 0);
+    return ok({ total, by_status: rows });
+  },
+);
+
+const ALLOWED_MOVE_STATUSES = [
+  "new",
+  "approved",
+  "needs_tailoring",
+  "on_hold",
+  "skipped",
+  "ready_to_apply",
+  "applied",
+] as const;
+
+server.registerTool(
+  "move_job",
+  {
+    description: `Move a job to a different pipeline status. Only certain transitions are allowed: ${ALLOWED_MOVE_STATUSES.join(", ")}.`,
+    inputSchema: {
+      id: z.number().int().describe("Job id"),
+      status: z.enum(ALLOWED_MOVE_STATUSES).describe("Target status"),
+      note: z.string().optional().describe("Optional note to log with the move"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const job = db.prepare(`SELECT id, status, title FROM jobs WHERE id = ?`).get(args.id) as
+      | { id: number; status: string; title: string }
+      | undefined;
+    if (!job) return err(`job ${args.id} not found`);
+    const prev = job.status;
+    db.prepare(`UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ?`).run(args.status, args.id);
+    db.prepare(
+      `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'status_changed', 'claude', ?)`,
+    ).run(args.id, JSON.stringify({ from: prev, to: args.status, note: args.note ?? null }));
+    return ok({ ok: true, job_id: args.id, title: job.title, from: prev, to: args.status });
+  },
+);
+
+server.registerTool(
+  "recent_activity",
+  {
+    description: "Return the most recent pipeline events. Use this to answer questions like 'what happened recently?' or 'what did I do last session?'",
+    inputSchema: {
+      limit: z.number().int().positive().optional().describe("Default 20"),
+    },
+  },
+  async (args) => {
+    const limit = args.limit ?? 20;
+    const rows = getDb()
+      .prepare(
+        `SELECT e.id, e.entity_type, e.entity_id, e.action, e.actor, e.payload_json, e.created_at,
+                j.title AS job_title, c.name AS company_name
+           FROM events e
+           LEFT JOIN jobs j ON e.entity_type = 'job' AND e.entity_id = j.id
+           LEFT JOIN companies c ON j.company_id = c.id
+          ORDER BY e.created_at DESC
+          LIMIT ?`,
+      )
+      .all(limit) as Record<string, unknown>[];
+    return ok({
+      count: rows.length,
+      events: rows.map((r) => ({
+        ...r,
+        payload_json: r.payload_json ? JSON.parse(r.payload_json as string) : null,
+      })),
+    });
+  },
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

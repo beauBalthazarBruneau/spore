@@ -53,7 +53,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     status: 200,
     headers: {
       "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `inline; filename="${filename}"`,
       "Content-Length": String(pdfBuffer.length),
     },
   });

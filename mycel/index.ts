@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import { loadSessionId, saveSessionId } from './session';
+import { buildSessionContext } from './context';
 
 // Assumes next dev runs from frontend/; override with SPORE_ROOT env var if needed
 const SPORE_ROOT = process.env.SPORE_ROOT ?? path.resolve(process.cwd(), '..');
@@ -9,6 +10,11 @@ const MYCEL_DIR = path.join(SPORE_ROOT, 'mycel');
 export function runMycel(message: string): ReadableStream<Uint8Array> {
   const sessionId = loadSessionId();
   const encoder = new TextEncoder();
+
+  const isNewSession = !sessionId;
+  const finalMessage = isNewSession
+    ? `${buildSessionContext()}\n\n[User message]\n${message}`
+    : message;
 
   const args = [
     '--print',
@@ -22,7 +28,7 @@ export function runMycel(message: string): ReadableStream<Uint8Array> {
     args.push('--resume', sessionId);
   }
 
-  args.push(message);
+  args.push(finalMessage);
 
   const proc = spawn('claude', args, { cwd: SPORE_ROOT });
 
