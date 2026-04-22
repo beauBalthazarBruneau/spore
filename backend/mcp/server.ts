@@ -528,7 +528,7 @@ server.registerTool(
       "Accept a ResumeJson object (or JSON string), render it to PDF via Playwright, then atomically write resume_json + resume_pdf + cover_letter_md to the job row and advance status to 'tailored'. If render fails the job stays in 'tailoring'. Logs a tailoring_completed event with resume_pdf_bytes and duration_ms.",
     inputSchema: {
       id: z.number().int().describe("Job id"),
-      resume_json: z.union([z.string(), z.record(z.unknown())]).describe("Tailored resume as a ResumeJson object or JSON string"),
+      resume_json: z.union([z.string(), z.record(z.string(), z.unknown())]).describe("Tailored resume as a ResumeJson object or JSON string"),
       cover_letter_md: z.string().describe("Cover letter as plain text (≤250 words)"),
     },
   },

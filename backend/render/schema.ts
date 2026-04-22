@@ -6,7 +6,7 @@ export const ResumeJsonSchema = z.object({
     email: z.string(),
     phone: z.string().optional(),
     location: z.string().optional(),
-    links: z.record(z.string()).optional(),
+    links: z.record(z.string(), z.string()).optional(),
   }),
   summary: z.string().optional(),
   experience: z.array(z.object({
@@ -21,7 +21,7 @@ export const ResumeJsonSchema = z.object({
     degree: z.string(),
     dates: z.string(),
   })),
-  skills: z.record(z.array(z.string())).optional(),
+  skills: z.record(z.string(), z.array(z.string())).optional(),
 })
 
 export type ResumeJson = z.infer<typeof ResumeJsonSchema>
