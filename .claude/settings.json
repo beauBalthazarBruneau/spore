@@ -1,5 +1,7 @@
 {
-  "enabledMcpjsonServers": ["spore"],
+  "enabledMcpjsonServers": [
+    "spore"
+  ],
   "permissions": {
     "allow": [
       "mcp__spore__upsert_company",
@@ -11,7 +13,6 @@
       "mcp__spore__get_job",
       "mcp__spore__start_tailoring",
       "mcp__spore__save_tailored",
-      "mcp__spore__render_pdf",
       "WebSearch",
       "WebFetch(domain:boards.greenhouse.io)",
       "WebFetch(domain:job-boards.greenhouse.io)",

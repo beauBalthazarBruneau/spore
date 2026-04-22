@@ -50,6 +50,7 @@ function migrate(db: Database.Database) {
   if (!jobColNames.has("resume_pdf_mime")) db.exec(`ALTER TABLE jobs ADD COLUMN resume_pdf_mime TEXT`);
   if (!jobColNames.has("cover_letter_pdf")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_pdf BLOB`);
   if (!jobColNames.has("cover_letter_pdf_mime")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_pdf_mime TEXT`);
+  if (!jobColNames.has("resume_json")) db.exec(`ALTER TABLE jobs ADD COLUMN resume_json TEXT`);
   // Note: rejected_by backfill runs from backend/db.ts on its next boot. Frontend just adds the column.
 
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
@@ -60,13 +61,14 @@ function migrate(db: Database.Database) {
   if (!profNames.has("base_resume_md") && !profNames.has("base_resume_path")) {
     db.exec(`ALTER TABLE profile ADD COLUMN base_resume_md TEXT`);
   }
+  if (!profNames.has("base_resume_json")) db.exec(`ALTER TABLE profile ADD COLUMN base_resume_json TEXT`);
 }
 
 const JOB_SELECT = `
   SELECT j.id, j.title, c.name AS company, j.location, j.salary_range, j.url, j.source,
          j.description, j.score, j.match_explanation, j.status,
          j.rejection_reason, j.rejection_note, j.approval_reason, j.approval_note, j.notes,
-         j.resume_tex, j.resume_md, j.cover_letter_md, j.submitted_at, j.discovered_at, j.updated_at
+         j.resume_tex, j.resume_md, j.resume_json, j.cover_letter_md, j.submitted_at, j.discovered_at, j.updated_at
   FROM jobs j LEFT JOIN companies c ON c.id = j.company_id
 `;
 

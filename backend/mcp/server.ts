@@ -17,7 +17,8 @@ import { getDb } from "../db";
 import { sources } from "../sources";
 import { upsertJob } from "../upsert";
 import type { RawPosting } from "../sources/types";
-import { renderJobPdfs } from "../pdf";
+import { ResumeJsonSchema, type ResumeJson } from "../render/schema";
+import { renderResumePdf } from "../render/resume";
 
 const SUPPORTED_ATS = ["greenhouse", "lever", "ashby", "rippling"] as const;
 const ATS_SOURCE = z.enum(SUPPORTED_ATS);
@@ -468,7 +469,7 @@ server.registerTool(
   "get_job",
   {
     description:
-      "Return a single job row joined with company_name and the user's base_resume_md from profile (id=1). This is the tailoring agent's single read call — job description, all existing fields, and the base resume in one shot.",
+      "Return a single job row joined with company_name, plus base_resume_md and base_resume_json from profile (id=1). This is the tailoring agent's single read call — job description, all existing fields, and both resume formats in one shot.",
     inputSchema: {
       id: z.number().int().describe("Job id"),
     },
@@ -483,10 +484,13 @@ server.registerTool(
       )
       .get(args.id) as Record<string, unknown> | undefined;
     if (!job) return err(`job ${args.id} not found`);
-    const profile = db.prepare(`SELECT base_resume_md FROM profile WHERE id = 1`).get() as
-      | { base_resume_md: string | null }
+    const profile = db.prepare(`SELECT base_resume_md, base_resume_json FROM profile WHERE id = 1`).get() as
+      | { base_resume_md: string | null; base_resume_json: string | null }
       | undefined;
     job.base_resume_md = profile?.base_resume_md ?? null;
+    job.base_resume_json = profile?.base_resume_json
+      ? JSON.parse(profile.base_resume_json as string)
+      : null;
     return ok({ job });
   },
 );
@@ -521,48 +525,56 @@ server.registerTool(
   "save_tailored",
   {
     description:
-      "Write resume_md and cover_letter_md to the job row and advance status to 'tailored'. Logs a tailoring_completed event with character counts.",
+      "Accept a ResumeJson object (or JSON string), render it to PDF via Playwright, then atomically write resume_json + resume_pdf + cover_letter_md to the job row and advance status to 'tailored'. If render fails the job stays in 'tailoring'. Logs a tailoring_completed event with resume_pdf_bytes and duration_ms.",
     inputSchema: {
       id: z.number().int().describe("Job id"),
-      resume_md: z.string().describe("Tailored resume as markdown"),
-      cover_letter_md: z.string().describe("Cover letter as markdown"),
+      resume_json: z.union([z.string(), z.record(z.unknown())]).describe("Tailored resume as a ResumeJson object or JSON string"),
+      cover_letter_md: z.string().describe("Cover letter as plain text (≤250 words)"),
     },
   },
   async (args) => {
     const db = getDb();
     const job = db.prepare(`SELECT id FROM jobs WHERE id = ?`).get(args.id) as { id: number } | undefined;
     if (!job) return err(`job ${args.id} not found`);
+
+    // Parse resume_json
+    let resumeObj: unknown;
+    try {
+      resumeObj = typeof args.resume_json === "string" ? JSON.parse(args.resume_json) : args.resume_json;
+    } catch (e) {
+      return err(`invalid resume_json: ${(e as Error).message}`);
+    }
+
+    // Validate with schema
+    let resumeData: ResumeJson;
+    try {
+      resumeData = ResumeJsonSchema.parse(resumeObj);
+    } catch (e) {
+      return err(`invalid resume_json: ${(e as Error).message}`);
+    }
+
+    // Render to PDF
+    const start = Date.now();
+    let buf: Buffer;
+    try {
+      buf = await renderResumePdf(resumeData);
+    } catch (e) {
+      return err(`render failed: ${(e as Error).message}`);
+    }
+    const duration_ms = Date.now() - start;
+
+    // Atomic write
     db.prepare(
-      `UPDATE jobs SET resume_md = ?, cover_letter_md = ?, status = 'tailored', updated_at = datetime('now') WHERE id = ?`,
-    ).run(args.resume_md, args.cover_letter_md, args.id);
-    const char_count_resume = args.resume_md.length;
-    const char_count_cover_letter = args.cover_letter_md.length;
+      `UPDATE jobs SET resume_json = ?, resume_pdf = ?, resume_pdf_mime = 'application/pdf',
+       cover_letter_md = ?, status = 'tailored', updated_at = datetime('now') WHERE id = ?`,
+    ).run(JSON.stringify(resumeData), buf, args.cover_letter_md, args.id);
+
+    const resume_pdf_bytes = buf.length;
     db.prepare(
       `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'tailoring_completed', 'claude', ?)`,
-    ).run(args.id, JSON.stringify({ char_count_resume, char_count_cover_letter }));
-    return ok({ ok: true, char_count_resume, char_count_cover_letter });
-  },
-);
+    ).run(args.id, JSON.stringify({ resume_pdf_bytes, duration_ms }));
 
-// ---------- PDF rendering ----------
-
-server.registerTool(
-  "render_pdf",
-  {
-    description:
-      "Render the tailored resume and cover letter for a job to PDF. Reads resume_md and cover_letter_md from the job row, renders both to PDF, stores the BLOBs in resume_pdf/cover_letter_pdf, and logs a pdf_rendered event. Returns byte counts.",
-    inputSchema: {
-      job_id: z.number().int().describe("Job id"),
-    },
-  },
-  async (args) => {
-    const db = getDb();
-    try {
-      const result = await renderJobPdfs(db, args.job_id);
-      return ok(result);
-    } catch (e) {
-      return err((e as Error).message);
-    }
+    return ok({ resume_pdf_bytes, duration_ms });
   },
 );
 

@@ -56,6 +56,7 @@ export type Job = {
   notes: string | null;
   resume_tex: string | null;
   resume_md: string | null;
+  resume_json: string | null;
   cover_letter_md: string | null;
   submitted_at: string | null;
   discovered_at: string;
