@@ -1,140 +1,170 @@
-import { chromium } from "playwright";
+import { execFile, execSync } from "node:child_process";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { randomUUID } from "node:crypto";
 import type { ResumeJson } from "./schema";
 
-function esc(s: string): string {
+const execFileAsync = promisify(execFile);
+
+// ---------------------------------------------------------------------------
+// LaTeX escaping
+// ---------------------------------------------------------------------------
+
+export function escapeTex(s: string): string {
   return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/\\/g, "\\textbackslash{}")
+    .replace(/&/g, "\\&")
+    .replace(/%/g, "\\%")
+    .replace(/\$/g, "\\$")
+    .replace(/#/g, "\\#")
+    .replace(/_/g, "\\_")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}")
+    .replace(/~/g, "\\textasciitilde{}")
+    .replace(/\^/g, "\\textasciicircum{}");
 }
 
-export function jsonToHtml(resume: ResumeJson): string {
+// ---------------------------------------------------------------------------
+// JSON → LaTeX
+// ---------------------------------------------------------------------------
+
+export function jsonToTex(resume: ResumeJson): string {
   const { name, contact, summary, experience, education, skills } = resume;
 
-  // Build contact row
-  const contactParts: string[] = [esc(contact.email)];
-  if (contact.phone) contactParts.push(esc(contact.phone));
-  if (contact.location) contactParts.push(esc(contact.location));
+  // Contact row
+  const contactParts: string[] = [escapeTex(contact.email)];
+  if (contact.phone) contactParts.push(escapeTex(contact.phone));
+  if (contact.location) contactParts.push(escapeTex(contact.location));
   if (contact.links) {
     for (const [label, url] of Object.entries(contact.links)) {
-      contactParts.push(`<a href="${esc(url)}" style="color:#000;text-decoration:none;">${esc(label)}: ${esc(url)}</a>`);
+      contactParts.push(`\\href{${escapeTex(url)}}{${escapeTex(label)}}`);
     }
   }
 
   // Summary section
-  const summaryHtml = summary
-    ? `<section style="margin-bottom:12pt;">
-        <div style="font-size:10.5pt;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #000;padding-bottom:2pt;margin-bottom:6pt;">Summary</div>
-        <p style="margin:0;font-size:10.5pt;line-height:1.4;">${esc(summary)}</p>
-       </section>`
+  const summaryTex = summary
+    ? `\\section*{Summary}\\hrule\\vspace{4pt}\n${escapeTex(summary)}\n`
     : "";
 
   // Experience section
   const expItems = experience.map((exp) => {
     const bullets = exp.bullets
-      .map((b) => `<li style="margin-bottom:2pt;">${esc(b)}</li>`)
+      .map((b) => `  \\item ${escapeTex(b)}`)
       .join("\n");
-    return `
-      <div style="margin-bottom:10pt;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;">
-          <span style="font-size:10.5pt;font-weight:700;">${esc(exp.company)} — ${esc(exp.title)}</span>
-          <span style="font-size:10pt;color:#333;">${esc(exp.dates)}</span>
-        </div>
-        ${exp.location ? `<div style="font-size:10pt;color:#555;margin-top:1pt;">${esc(exp.location)}</div>` : ""}
-        <ul style="margin:4pt 0 0 0;padding-left:18pt;font-size:10.5pt;line-height:1.4;">
-          ${bullets}
-        </ul>
-      </div>`;
-  }).join("\n");
+    const locationLine = exp.location
+      ? `\n\\textit{${escapeTex(exp.location)}}\n`
+      : "";
+    return `\\textbf{${escapeTex(exp.company)} --- ${escapeTex(exp.title)}} \\hfill ${escapeTex(exp.dates)}${locationLine}
+\\begin{itemize}[noitemsep,topsep=2pt,leftmargin=*]
+${bullets}
+\\end{itemize}
+\\vspace{4pt}`;
+  });
 
-  const experienceHtml = experience.length > 0
-    ? `<section style="margin-bottom:12pt;">
-        <div style="font-size:10.5pt;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #000;padding-bottom:2pt;margin-bottom:6pt;">Experience</div>
-        ${expItems}
-       </section>`
-    : "";
+  const experienceTex =
+    experience.length > 0
+      ? `\\section*{Experience}\\hrule\\vspace{4pt}\n${expItems.join("\n")}\n`
+      : "";
 
   // Education section
-  const eduItems = education.map((edu) => `
-    <div style="margin-bottom:6pt;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;">
-        <span style="font-size:10.5pt;font-weight:700;">${esc(edu.institution)}</span>
-        <span style="font-size:10pt;color:#333;">${esc(edu.dates)}</span>
-      </div>
-      <div style="font-size:10.5pt;color:#333;">${esc(edu.degree)}</div>
-    </div>`).join("\n");
+  const eduItems = education.map(
+    (edu) =>
+      `\\textbf{${escapeTex(edu.institution)}} \\hfill ${escapeTex(edu.dates)}\n` +
+      `${escapeTex(edu.degree)}\n`,
+  );
 
-  const educationHtml = education.length > 0
-    ? `<section style="margin-bottom:12pt;">
-        <div style="font-size:10.5pt;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #000;padding-bottom:2pt;margin-bottom:6pt;">Education</div>
-        ${eduItems}
-       </section>`
-    : "";
+  const educationTex =
+    education.length > 0
+      ? `\\section*{Education}\\hrule\\vspace{4pt}\n${eduItems.join("\\vspace{4pt}\n")}\n`
+      : "";
 
   // Skills section
-  let skillsHtml = "";
+  let skillsTex = "";
   if (skills && Object.keys(skills).length > 0) {
-    const skillRows = Object.entries(skills).map(([category, items]) =>
-      `<div style="margin-bottom:4pt;font-size:10.5pt;">
-        <span style="font-weight:700;">${esc(category)}:</span> ${items.map(esc).join(", ")}
-       </div>`,
-    ).join("\n");
-    skillsHtml = `<section style="margin-bottom:12pt;">
-      <div style="font-size:10.5pt;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #000;padding-bottom:2pt;margin-bottom:6pt;">Skills</div>
-      ${skillRows}
-    </section>`;
+    const rows = Object.entries(skills)
+      .map(
+        ([category, items]) =>
+          `  \\textbf{${escapeTex(category)}:} & ${items.map(escapeTex).join(", ")} \\\\`,
+      )
+      .join("\n");
+    skillsTex = `\\section*{Skills}\\hrule\\vspace{4pt}\n\\begin{tabular}{@{}p{1.2in}p{5in}@{}}\n${rows}\n\\end{tabular}\n`;
   }
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${esc(name)} — Resume</title>
-  <style>
-    @page { size: letter; margin: 0.75in; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, Arial, sans-serif;
-      font-size: 10.5pt;
-      color: #000;
-      background: #fff;
-      margin: 0;
-      padding: 0;
-    }
-    a { color: #000; }
-  </style>
-</head>
-<body>
-  <header style="text-align:center;margin-bottom:10pt;">
-    <h1 style="margin:0;font-size:18pt;font-weight:700;letter-spacing:0.02em;">${esc(name)}</h1>
-    <div style="font-size:10pt;color:#333;margin-top:4pt;">
-      ${contactParts.join(" &nbsp;|&nbsp; ")}
-    </div>
-  </header>
-  <hr style="border:none;border-top:1px solid #000;margin:0 0 12pt 0;" />
-  ${summaryHtml}
-  ${experienceHtml}
-  ${educationHtml}
-  ${skillsHtml}
-</body>
-</html>`;
+  return `\\documentclass[11pt,letterpaper]{article}
+\\usepackage[margin=0.75in]{geometry}
+\\usepackage{enumitem}
+\\usepackage{titlesec}
+\\usepackage{hyperref}
+\\usepackage[T1]{fontenc}
+\\usepackage{lmodern}
+\\pagestyle{empty}
+
+\\titlespacing*{\\section}{0pt}{8pt}{4pt}
+
+\\begin{document}
+
+\\begin{center}
+\\textbf{\\LARGE ${escapeTex(name)}}\\\\[4pt]
+${contactParts.join(" \\quad|\\quad ")}
+\\end{center}
+
+\\vspace{4pt}
+
+${summaryTex}
+${experienceTex}
+${educationTex}
+${skillsTex}
+
+\\end{document}
+`;
 }
 
-export async function renderPdf(html: string): Promise<Buffer> {
-  const browser = await chromium.launch({ headless: true });
+// ---------------------------------------------------------------------------
+// pdflatex subprocess
+// ---------------------------------------------------------------------------
+
+export async function renderPdf(source: string): Promise<Buffer> {
+  const tmpDir = `/tmp/spore-render-${randomUUID()}`;
+  mkdirSync(tmpDir, { recursive: true });
+  const texPath = join(tmpDir, "resume.tex");
+  const pdfPath = join(tmpDir, "resume.pdf");
+
   try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle" });
-    const pdfBytes = await page.pdf({ format: "Letter", printBackground: true });
-    return Buffer.from(pdfBytes);
+    writeFileSync(texPath, source, "utf8");
+
+    const runLatex = () =>
+      execFileAsync("pdflatex", [
+        "-interaction=nonstopmode",
+        `-output-directory=${tmpDir}`,
+        texPath,
+      ]);
+
+    // Run twice — standard LaTeX practice for cross-references
+    let lastResult: { stdout: string; stderr: string } = { stdout: "", stderr: "" };
+    for (let i = 0; i < 2; i++) {
+      try {
+        lastResult = await runLatex();
+      } catch (e: unknown) {
+        const err = e as { stdout?: string; stderr?: string; message?: string };
+        const combined = ((err.stdout ?? "") + "\n" + (err.stderr ?? "")).trim();
+        const lines = combined.split("\n");
+        const tail = lines.slice(-20).join("\n");
+        throw new Error(`pdflatex failed (pass ${i + 1}):\n${tail}`);
+      }
+    }
+
+    return readFileSync(pdfPath);
   } finally {
-    await browser.close();
+    rmSync(tmpDir, { recursive: true, force: true });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 export async function renderResumePdf(resume: ResumeJson): Promise<Buffer> {
-  const html = jsonToHtml(resume);
-  return renderPdf(html);
+  const tex = jsonToTex(resume);
+  return renderPdf(tex);
 }

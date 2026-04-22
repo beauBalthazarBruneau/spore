@@ -18,7 +18,7 @@ import { sources } from "../sources";
 import { upsertJob } from "../upsert";
 import type { RawPosting } from "../sources/types";
 import { ResumeJsonSchema, type ResumeJson } from "../render/schema";
-import { renderResumePdf } from "../render/resume";
+import { jsonToTex, renderResumePdf } from "../render/resume";
 
 const SUPPORTED_ATS = ["greenhouse", "lever", "ashby", "rippling"] as const;
 const ATS_SOURCE = z.enum(SUPPORTED_ATS);
@@ -553,8 +553,9 @@ server.registerTool(
       return err(`invalid resume_json: ${(e as Error).message}`);
     }
 
-    // Render to PDF
+    // Render to PDF (generate tex first so we can save it alongside the PDF)
     const start = Date.now();
+    const resumeTex = jsonToTex(resumeData);
     let buf: Buffer;
     try {
       buf = await renderResumePdf(resumeData);
@@ -565,9 +566,9 @@ server.registerTool(
 
     // Atomic write
     db.prepare(
-      `UPDATE jobs SET resume_json = ?, resume_pdf = ?, resume_pdf_mime = 'application/pdf',
+      `UPDATE jobs SET resume_json = ?, resume_tex = ?, resume_pdf = ?, resume_pdf_mime = 'application/pdf',
        cover_letter_md = ?, status = 'tailored', updated_at = datetime('now') WHERE id = ?`,
-    ).run(JSON.stringify(resumeData), buf, args.cover_letter_md, args.id);
+    ).run(JSON.stringify(resumeData), resumeTex, buf, args.cover_letter_md, args.id);
 
     const resume_pdf_bytes = buf.length;
     db.prepare(

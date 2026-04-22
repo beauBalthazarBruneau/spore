@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { jsonToHtml, renderResumePdf } from "./resume";
+import { execSync } from "node:child_process";
+import { jsonToTex, renderResumePdf } from "./resume";
 import type { ResumeJson } from "./schema";
 
 const fixture: ResumeJson = {
@@ -18,32 +19,48 @@ const fixture: ResumeJson = {
   skills: { Tools: ["Figma", "Jira"] },
 };
 
-describe("jsonToHtml", () => {
-  it("produces a string containing the candidate name", () => {
-    const html = jsonToHtml(fixture);
-    expect(typeof html).toBe("string");
-    expect(html).toContain("Jane Smith");
+describe("jsonToTex", () => {
+  it("produces a string containing \\documentclass", () => {
+    const tex = jsonToTex(fixture);
+    expect(typeof tex).toBe("string");
+    expect(tex).toContain("\\documentclass");
+  });
+
+  it("contains the candidate name", () => {
+    const tex = jsonToTex(fixture);
+    expect(tex).toContain("Jane Smith");
   });
 
   it("contains experience company and title", () => {
-    const html = jsonToHtml(fixture);
-    expect(html).toContain("Acme");
-    expect(html).toContain("PM");
+    const tex = jsonToTex(fixture);
+    expect(tex).toContain("Acme");
+    expect(tex).toContain("PM");
   });
 
   it("contains education institution", () => {
-    const html = jsonToHtml(fixture);
-    expect(html).toContain("MIT");
+    const tex = jsonToTex(fixture);
+    expect(tex).toContain("MIT");
   });
 
   it("contains skills", () => {
-    const html = jsonToHtml(fixture);
-    expect(html).toContain("Figma");
+    const tex = jsonToTex(fixture);
+    expect(tex).toContain("Figma");
   });
 });
 
+// Skip renderResumePdf integration test if pdflatex is not installed
+let hasPdflatex = false;
+try {
+  execSync("which pdflatex", { stdio: "ignore" });
+  hasPdflatex = true;
+} catch {
+  hasPdflatex = false;
+}
+
 describe("renderResumePdf", () => {
-  it("produces a non-empty Buffer starting with %PDF", { timeout: 30000 }, async () => {
+  const itMaybe = hasPdflatex ? it : it.skip;
+
+  itMaybe("produces a non-empty Buffer starting with %PDF", { timeout: 30_000 }, async () => {
     const buf = await renderResumePdf(fixture);
     expect(buf).toBeInstanceOf(Buffer);
     expect(buf.length).toBeGreaterThan(0);
