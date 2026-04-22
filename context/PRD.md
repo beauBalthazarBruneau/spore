@@ -139,7 +139,7 @@ needs_tailoring → tailoring → tailored → ready_to_apply
 - Renderer walks JSON → emits tex via template macros → compiles to pdf. Both cached on the row (`resume_tex`, `resume_pdf`).
 - Agent edits JSON only. Renderer is pure code, deterministic, never LLM-touched.
 - Validator rejects tailored JSONs that introduce new companies, roles, or education entries absent from the master — prevents fabrication.
-- One-off migration script: parse `Resume_bank/config/master_resume.tex` → JSON, upsert to `profile.base_resume_json`.
+- One-off migration script: parse a master resume (seeded from a private resume database, PII scrubbed before commit) → JSON, upsert to `profile.base_resume_json`.
 
 **JSON schema** (excerpt — shape mirrors template macros 1:1):
 ```json
