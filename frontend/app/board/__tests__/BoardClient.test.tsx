@@ -58,6 +58,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     notes: null,
     resume_tex: null,
     resume_md: null,
+    resume_json: null,
     cover_letter_md: null,
     submitted_at: null,
     discovered_at: "2026-01-01T00:00:00Z",
@@ -70,21 +71,32 @@ function makeJob(overrides: Partial<Job> = {}): Job {
 // Tests: Drawer renders tailoring outputs
 // ---------------------------------------------------------------------------
 describe("Drawer: resume and cover letter rendering", () => {
-  it("renders resume_md content when job has a tailored resume", async () => {
+  it("renders resume PDF iframe when job has resume_md", async () => {
+    const job = makeJob({ status: "tailored", resume_md: "# My Resume\n\nEngineering lead." });
+    render(<BoardClient initialJobs={[job]} />);
+
+    fireEvent.click(screen.getByText("Staff Engineer"));
+
+    const iframe = screen.getByTitle("Tailored Resume PDF") as HTMLIFrameElement;
+    expect(iframe).toBeDefined();
+    expect(iframe.src).toContain("/api/jobs/1/pdf?type=resume");
+  });
+
+  it("renders resume PDF iframe when job has resume_json (backward compat)", async () => {
     const job = makeJob({
       status: "tailored",
-      resume_md: "# My Resume\n\nEngineering lead with 10 years experience.",
+      resume_json: JSON.stringify({ name: "Jane", contact: { email: "j@j.com" }, experience: [], education: [] }),
     });
     render(<BoardClient initialJobs={[job]} />);
 
-    // Open the drawer by clicking the card
     fireEvent.click(screen.getByText("Staff Engineer"));
 
-    expect(screen.getByText(/My Resume/)).toBeDefined();
-    expect(screen.getByText(/Engineering lead/)).toBeDefined();
+    const iframe = screen.getByTitle("Tailored Resume PDF") as HTMLIFrameElement;
+    expect(iframe).toBeDefined();
+    expect(iframe.src).toContain("/api/jobs/1/pdf?type=resume");
   });
 
-  it("renders cover_letter_md content when job has a cover letter", async () => {
+  it("renders cover_letter_md content as plain text in <pre>", async () => {
     const job = makeJob({
       status: "tailored",
       cover_letter_md: "Dear Hiring Manager,\n\nI am excited to apply.",
@@ -97,26 +109,39 @@ describe("Drawer: resume and cover letter rendering", () => {
     expect(screen.getByText(/I am excited to apply/)).toBeDefined();
   });
 
-  it("shows PDF download links when resume_md is present", async () => {
+  it("shows Download PDF link for resume when resume_md is present", async () => {
     const job = makeJob({ status: "tailored", resume_md: "# Resume content" });
     render(<BoardClient initialJobs={[job]} />);
 
     fireEvent.click(screen.getByText("Staff Engineer"));
 
-    const resumeLink = screen.getByText(/Download PDF/);
+    const resumeLink = screen.getByTestId("resume-pdf-link") as HTMLAnchorElement;
     expect(resumeLink).toBeDefined();
-    expect((resumeLink as HTMLAnchorElement).href).toContain("/api/jobs/1/pdf?type=resume");
+    expect(resumeLink.href).toContain("/api/jobs/1/pdf?type=resume");
   });
 
-  it("shows cover letter PDF download link when cover_letter_md is present", async () => {
+  it("does not show Download PDF for cover letter", async () => {
     const job = makeJob({ status: "tailored", cover_letter_md: "Dear Hiring Manager" });
     render(<BoardClient initialJobs={[job]} />);
 
     fireEvent.click(screen.getByText("Staff Engineer"));
 
-    const links = screen.getAllByText(/Download PDF/);
-    const coverLink = links.find((el) => (el as HTMLAnchorElement).href?.includes("cover_letter"));
-    expect(coverLink).toBeDefined();
+    // There should be no anchor with cover_letter in href
+    const allLinks = screen.queryAllByRole("link");
+    const coverLetterPdfLink = allLinks.find(
+      (el) => (el as HTMLAnchorElement).href?.includes("cover_letter"),
+    );
+    expect(coverLetterPdfLink).toBeUndefined();
+  });
+
+  it("shows Copy button when cover letter text is present", async () => {
+    const job = makeJob({ status: "tailored", cover_letter_md: "Dear Hiring Manager" });
+    render(<BoardClient initialJobs={[job]} />);
+
+    fireEvent.click(screen.getByText("Staff Engineer"));
+
+    const copyBtn = screen.getByTestId("cover-letter-copy");
+    expect(copyBtn).toBeDefined();
   });
 });
 

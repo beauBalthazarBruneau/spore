@@ -1,7 +1,19 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ResumeJson } from "../render/schema";
+
+// ---------------------------------------------------------------------------
+// Mock renderResumePdf before importing anything that uses it
+// ---------------------------------------------------------------------------
+vi.mock("../render/resume", () => ({
+  renderResumePdf: vi.fn().mockResolvedValue(Buffer.from("%PDF-fake")),
+}));
+
+// Import the mock so tests can control it
+import { renderResumePdf } from "../render/resume";
+const mockRenderResumePdf = vi.mocked(renderResumePdf);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -10,6 +22,9 @@ import { resolve } from "node:path";
 function setupDb(): Database.Database {
   const db = new Database(":memory:");
   db.exec(readFileSync(resolve(__dirname, "../schema.sql"), "utf8"));
+  // Add new columns not yet in schema.sql (added by migrate() at runtime)
+  db.exec(`ALTER TABLE jobs ADD COLUMN resume_json TEXT`);
+  db.exec(`ALTER TABLE profile ADD COLUMN base_resume_json TEXT`);
   return db;
 }
 
@@ -29,10 +44,10 @@ function insertJob(
   ).run(id, `Job ${id}`, companyId, status, `Description for job ${id}`, `https://example.com/job/${id}`);
 }
 
-function insertProfile(db: Database.Database, baseResumeMd: string | null) {
+function insertProfile(db: Database.Database, baseResumeMd: string | null, baseResumeJson?: string | null) {
   db.prepare(
-    `INSERT INTO profile (id, full_name, base_resume_md) VALUES (1, 'Test User', ?)`,
-  ).run(baseResumeMd);
+    `INSERT INTO profile (id, full_name, base_resume_md, base_resume_json) VALUES (1, 'Test User', ?, ?)`,
+  ).run(baseResumeMd, baseResumeJson ?? null);
 }
 
 function getJobStatus(db: Database.Database, id: number): string | null {
@@ -43,8 +58,8 @@ function getJobStatus(db: Database.Database, id: number): string | null {
 }
 
 function getJobFields(db: Database.Database, id: number) {
-  return db.prepare(`SELECT resume_md, cover_letter_md, status FROM jobs WHERE id = ?`).get(id) as
-    | { resume_md: string | null; cover_letter_md: string | null; status: string }
+  return db.prepare(`SELECT resume_json, resume_pdf, cover_letter_md, status FROM jobs WHERE id = ?`).get(id) as
+    | { resume_json: string | null; resume_pdf: Buffer | null; cover_letter_md: string | null; status: string }
     | undefined;
 }
 
@@ -55,7 +70,7 @@ function getEvents(db: Database.Database, jobId: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Inline implementations of the three MCP tool handlers
+// Inline implementations of the MCP tool handlers
 // (mirrors backend/mcp/server.ts exactly — tests the logic without the MCP layer)
 // ---------------------------------------------------------------------------
 
@@ -68,10 +83,13 @@ function getJobTool(db: Database.Database, id: number) {
     )
     .get(id) as Record<string, unknown> | undefined;
   if (!job) return { error: `job ${id} not found` };
-  const profile = db.prepare(`SELECT base_resume_md FROM profile WHERE id = 1`).get() as
-    | { base_resume_md: string | null }
+  const profile = db.prepare(`SELECT base_resume_md, base_resume_json FROM profile WHERE id = 1`).get() as
+    | { base_resume_md: string | null; base_resume_json: string | null }
     | undefined;
   job.base_resume_md = profile?.base_resume_md ?? null;
+  job.base_resume_json = profile?.base_resume_json
+    ? JSON.parse(profile.base_resume_json as string)
+    : null;
   return { job };
 }
 
@@ -90,24 +108,68 @@ function startTailoringTool(db: Database.Database, id: number) {
   return { ok: true };
 }
 
-function saveTailoredTool(
+import { ResumeJsonSchema } from "../render/schema";
+
+async function saveTailoredTool(
   db: Database.Database,
   id: number,
-  resume_md: string,
+  resume_json: unknown,
   cover_letter_md: string,
 ) {
   const job = db.prepare(`SELECT id FROM jobs WHERE id = ?`).get(id) as { id: number } | undefined;
   if (!job) return { error: `job ${id} not found` };
+
+  // Parse
+  let resumeObj: unknown;
+  try {
+    resumeObj = typeof resume_json === "string" ? JSON.parse(resume_json) : resume_json;
+  } catch (e) {
+    return { error: `invalid resume_json: ${(e as Error).message}` };
+  }
+
+  // Validate
+  let resumeData: ResumeJson;
+  try {
+    resumeData = ResumeJsonSchema.parse(resumeObj);
+  } catch (e) {
+    return { error: `invalid resume_json: ${(e as Error).message}` };
+  }
+
+  // Render
+  const start = Date.now();
+  let buf: Buffer;
+  try {
+    buf = await renderResumePdf(resumeData);
+  } catch (e) {
+    return { error: `render failed: ${(e as Error).message}` };
+  }
+  const duration_ms = Date.now() - start;
+
+  // Write
   db.prepare(
-    `UPDATE jobs SET resume_md = ?, cover_letter_md = ?, status = 'tailored', updated_at = datetime('now') WHERE id = ?`,
-  ).run(resume_md, cover_letter_md, id);
-  const char_count_resume = resume_md.length;
-  const char_count_cover_letter = cover_letter_md.length;
+    `UPDATE jobs SET resume_json = ?, resume_pdf = ?, resume_pdf_mime = 'application/pdf',
+     cover_letter_md = ?, status = 'tailored', updated_at = datetime('now') WHERE id = ?`,
+  ).run(JSON.stringify(resumeData), buf, cover_letter_md, id);
+
+  const resume_pdf_bytes = buf.length;
   db.prepare(
     `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'tailoring_completed', 'claude', ?)`,
-  ).run(id, JSON.stringify({ char_count_resume, char_count_cover_letter }));
-  return { ok: true, char_count_resume, char_count_cover_letter };
+  ).run(id, JSON.stringify({ resume_pdf_bytes, duration_ms }));
+
+  return { resume_pdf_bytes, duration_ms };
 }
+
+// ---------------------------------------------------------------------------
+// Test data
+// ---------------------------------------------------------------------------
+
+const VALID_RESUME_JSON: ResumeJson = {
+  name: "Jane Smith",
+  contact: { email: "jane@example.com" },
+  experience: [{ company: "Acme", title: "PM", dates: "2020–present", bullets: ["Led team of 5"] }],
+  education: [{ institution: "MIT", degree: "BS CS", dates: "2016" }],
+};
+const COVER = "Dear Hiring Manager,\n\nI am excited to apply.";
 
 // ---------------------------------------------------------------------------
 // Tests: get_job
@@ -131,9 +193,22 @@ describe("get_job", () => {
     expect(result.job!.base_resume_md).toBe("# My Base Resume\n\nExperience...");
   });
 
+  it("returns base_resume_json parsed when profile has it", () => {
+    const jsonData = { name: "Test", contact: { email: "t@t.com" }, experience: [], education: [] };
+    insertProfile(db, null, JSON.stringify(jsonData));
+    const result = getJobTool(db, 101);
+    expect(result.job!.base_resume_json).toEqual(jsonData);
+  });
+
   it("returns base_resume_md as null when no profile exists", () => {
     const result = getJobTool(db, 101);
     expect(result.job!.base_resume_md).toBeNull();
+  });
+
+  it("returns base_resume_json as null when profile has no json", () => {
+    insertProfile(db, "# Resume");
+    const result = getJobTool(db, 101);
+    expect(result.job!.base_resume_json).toBeNull();
   });
 
   it("returns error for non-existent job id", () => {
@@ -208,47 +283,70 @@ describe("start_tailoring", () => {
 // ---------------------------------------------------------------------------
 
 describe("save_tailored", () => {
-  const RESUME = "# Tailored Resume\n\nSome content here.";
-  const COVER = "Dear Hiring Manager,\n\nI am excited...";
-
   let db: Database.Database;
+
   beforeEach(() => {
     db = setupDb();
     insertCompany(db, 1, "Acme Corp");
     insertJob(db, 101, 1, "tailoring");
+    mockRenderResumePdf.mockResolvedValue(Buffer.from("%PDF-fake"));
   });
 
-  it("writes resume_md and cover_letter_md to the job row", () => {
-    saveTailoredTool(db, 101, RESUME, COVER);
+  it("writes resume_json and resume_pdf to the job row", async () => {
+    await saveTailoredTool(db, 101, VALID_RESUME_JSON, COVER);
     const fields = getJobFields(db, 101)!;
-    expect(fields.resume_md).toBe(RESUME);
+    expect(fields.resume_json).toBe(JSON.stringify(VALID_RESUME_JSON));
+    expect(fields.resume_pdf).toBeDefined();
+    expect(Buffer.isBuffer(fields.resume_pdf)).toBe(true);
+  });
+
+  it("writes cover_letter_md to the job row", async () => {
+    await saveTailoredTool(db, 101, VALID_RESUME_JSON, COVER);
+    const fields = getJobFields(db, 101)!;
     expect(fields.cover_letter_md).toBe(COVER);
   });
 
-  it("advances status to tailored", () => {
-    saveTailoredTool(db, 101, RESUME, COVER);
+  it("advances status to tailored", async () => {
+    await saveTailoredTool(db, 101, VALID_RESUME_JSON, COVER);
     expect(getJobStatus(db, 101)).toBe("tailored");
   });
 
-  it("returns ok:true with correct char counts", () => {
-    const result = saveTailoredTool(db, 101, RESUME, COVER);
-    expect(result.ok).toBe(true);
-    expect(result.char_count_resume).toBe(RESUME.length);
-    expect(result.char_count_cover_letter).toBe(COVER.length);
+  it("returns resume_pdf_bytes", async () => {
+    const result = await saveTailoredTool(db, 101, VALID_RESUME_JSON, COVER);
+    expect(result.resume_pdf_bytes).toBe(Buffer.from("%PDF-fake").length);
   });
 
-  it("logs a tailoring_completed event with char counts", () => {
-    saveTailoredTool(db, 101, RESUME, COVER);
+  it("logs a tailoring_completed event with resume_pdf_bytes", async () => {
+    await saveTailoredTool(db, 101, VALID_RESUME_JSON, COVER);
     const events = getEvents(db, 101);
     expect(events).toHaveLength(1);
     expect(events[0].action).toBe("tailoring_completed");
     const payload = JSON.parse(events[0].payload_json!);
-    expect(payload.char_count_resume).toBe(RESUME.length);
-    expect(payload.char_count_cover_letter).toBe(COVER.length);
+    expect(payload.resume_pdf_bytes).toBe(Buffer.from("%PDF-fake").length);
+    expect(typeof payload.duration_ms).toBe("number");
   });
 
-  it("returns error for non-existent job id", () => {
-    const result = saveTailoredTool(db, 9999, RESUME, COVER);
+  it("accepts resume_json as a JSON string", async () => {
+    await saveTailoredTool(db, 101, JSON.stringify(VALID_RESUME_JSON), COVER);
+    expect(getJobStatus(db, 101)).toBe("tailored");
+  });
+
+  it("returns error for invalid resume_json (missing required fields)", async () => {
+    const result = await saveTailoredTool(db, 101, { name: "Bad" }, COVER);
+    expect(result.error).toMatch(/invalid resume_json/);
+    // Status should not change
+    expect(getJobStatus(db, 101)).toBe("tailoring");
+  });
+
+  it("returns error and keeps status=tailoring when render fails", async () => {
+    mockRenderResumePdf.mockRejectedValueOnce(new Error("chromium crashed"));
+    const result = await saveTailoredTool(db, 101, VALID_RESUME_JSON, COVER);
+    expect(result.error).toMatch(/render failed/);
+    expect(getJobStatus(db, 101)).toBe("tailoring");
+  });
+
+  it("returns error for non-existent job id", async () => {
+    const result = await saveTailoredTool(db, 9999, VALID_RESUME_JSON, COVER);
     expect(result.error).toMatch(/not found/);
   });
 });

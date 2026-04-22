@@ -49,7 +49,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const contentType = (row[mimeCol] as string | null) ?? "application/pdf";
 
-  return new NextResponse(pdfBuffer, {
+  return new NextResponse(pdfBuffer as unknown as BodyInit, {
     status: 200,
     headers: {
       "Content-Type": contentType,

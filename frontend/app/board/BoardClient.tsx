@@ -327,8 +327,7 @@ function Drawer({
     onSaveField(job.id, "cover_letter_md", coverLetterDraft);
   }
 
-  const hasPdfResume = Boolean(job.resume_md || job.resume_tex);
-  const hasPdfCoverLetter = Boolean(job.cover_letter_md);
+  const hasResume = Boolean(job.resume_md || job.resume_json);
 
   return (
     <div
@@ -395,17 +394,18 @@ function Drawer({
           )}
 
           {/* Resume */}
-          {(job.resume_md || editMode) && (
+          {(hasResume || editMode) && (
             <section>
               <div className="flex items-center justify-between mb-1">
                 <SectionHeading>Tailored Resume</SectionHeading>
                 <div className="flex gap-2">
-                  {job.resume_md && (
+                  {hasResume && (
                     <a
                       href={`/api/jobs/${job.id}/pdf?type=resume`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs text-blue-400 hover:underline"
+                      data-testid="resume-pdf-link"
                     >
                       Download PDF ↓
                     </a>
@@ -429,9 +429,11 @@ function Drawer({
                   </button>
                 </div>
               ) : (
-                <div
-                  className="text-sm text-zinc-300 prose prose-invert prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: mdToHtml(job.resume_md ?? "") }}
+                <iframe
+                  src={`/api/jobs/${job.id}/pdf?type=resume`}
+                  className="w-full rounded border border-zinc-700"
+                  style={{ height: "70vh" }}
+                  title="Tailored Resume PDF"
                 />
               )}
             </section>
@@ -442,18 +444,15 @@ function Drawer({
             <section>
               <div className="flex items-center justify-between mb-1">
                 <SectionHeading>Cover Letter</SectionHeading>
-                <div className="flex gap-2">
-                  {job.cover_letter_md && (
-                    <a
-                      href={`/api/jobs/${job.id}/pdf?type=cover_letter`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-blue-400 hover:underline"
-                    >
-                      Download PDF ↓
-                    </a>
-                  )}
-                </div>
+                {job.cover_letter_md && !editMode && (
+                  <button
+                    data-testid="cover-letter-copy"
+                    className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-2 py-0.5 rounded"
+                    onClick={() => navigator.clipboard.writeText(job.cover_letter_md ?? "")}
+                  >
+                    Copy
+                  </button>
+                )}
               </div>
               {editMode ? (
                 <div>
@@ -472,10 +471,7 @@ function Drawer({
                   </button>
                 </div>
               ) : (
-                <div
-                  className="text-sm text-zinc-300 prose prose-invert prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: mdToHtml(job.cover_letter_md ?? "") }}
-                />
+                <pre className="text-sm text-zinc-300 whitespace-pre-wrap font-sans">{job.cover_letter_md}</pre>
               )}
             </section>
           )}

@@ -46,6 +46,7 @@ function migrate(db: Database.Database) {
   if (!jobColNames.has("resume_pdf_mime")) db.exec(`ALTER TABLE jobs ADD COLUMN resume_pdf_mime TEXT`);
   if (!jobColNames.has("cover_letter_pdf")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_pdf BLOB`);
   if (!jobColNames.has("cover_letter_pdf_mime")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_pdf_mime TEXT`);
+  if (!jobColNames.has("resume_json")) db.exec(`ALTER TABLE jobs ADD COLUMN resume_json TEXT`);
 
   // profile column migrations
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
@@ -56,6 +57,7 @@ function migrate(db: Database.Database) {
   if (!profNames.has("base_resume_md") && !profNames.has("base_resume_path")) {
     db.exec(`ALTER TABLE profile ADD COLUMN base_resume_md TEXT`);
   }
+  if (!profNames.has("base_resume_json")) db.exec(`ALTER TABLE profile ADD COLUMN base_resume_json TEXT`);
 
   // Rebuild jobs table if the CHECK constraint is missing required statuses.
   const jobsDdl = db
