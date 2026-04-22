@@ -6,11 +6,22 @@ type Message = { role: 'user' | 'assistant'; text: string };
 
 export default function ChatDrawer() {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(localStorage.getItem('mycel_messages') ?? '[]');
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('mycel_messages', JSON.stringify(messages));
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -89,6 +100,7 @@ export default function ChatDrawer() {
   const clearSession = async () => {
     await fetch('/api/agent', { method: 'DELETE' });
     setMessages([]);
+    localStorage.removeItem('mycel_messages');
   };
 
   return (
