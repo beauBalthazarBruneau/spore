@@ -40,7 +40,7 @@ async function main() {
 
   db.prepare(`UPDATE jobs SET status = 'submitting', updated_at = datetime('now') WHERE id = ?`).run(jobId);
   db.prepare(
-    `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_started', 'board', ?)`,
+    `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_started', 'system', ?)`,
   ).run(jobId, JSON.stringify({ job_id: jobId }));
 
   let result: { success: boolean; confirmationRef?: string; error?: string };
@@ -72,12 +72,12 @@ async function main() {
       `UPDATE jobs SET status = 'applied', submitted_at = datetime('now'), confirmation_ref = ?, updated_at = datetime('now') WHERE id = ?`,
     ).run(result.confirmationRef ?? null, jobId);
     db.prepare(
-      `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_completed', 'board', ?)`,
+      `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_completed', 'system', ?)`,
     ).run(jobId, JSON.stringify({ confirmation_ref: result.confirmationRef ?? null }));
   } else {
     db.prepare(`UPDATE jobs SET status = 'submission_failed', updated_at = datetime('now') WHERE id = ?`).run(jobId);
     db.prepare(
-      `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_failed', 'board', ?)`,
+      `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_failed', 'system', ?)`,
     ).run(jobId, JSON.stringify({ error: result.error ?? "unknown error" }));
   }
 
