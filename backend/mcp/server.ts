@@ -12,6 +12,8 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import { z } from "zod";
 import { getDb } from "../db";
 import { sources } from "../sources";
@@ -575,7 +577,58 @@ server.registerTool(
       `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'tailoring_completed', 'claude', ?)`,
     ).run(args.id, JSON.stringify({ resume_pdf_bytes, duration_ms }));
 
+    // Spawn probe in background — does not block this response
+    const repoRoot = resolve(__dirname, "..", "..");
+    const child = spawn(
+      "npx",
+      ["tsx", "submitter/probe.ts", String(args.id)],
+      { cwd: repoRoot, detached: true, stdio: "ignore" },
+    );
+    child.unref();
+
     return ok({ resume_pdf_bytes, duration_ms });
+  },
+);
+
+// ---------- Application Questions ----------
+
+server.registerTool(
+  "get_application_questions",
+  {
+    description: "Return all custom application questions detected during the form probe for a given job. Use this after tailoring completes to review Q&A before approving for submission.",
+    inputSchema: {
+      job_id: z.number().int().describe("Job id"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const questions = db
+      .prepare(`SELECT * FROM application_questions WHERE job_id = ? ORDER BY id ASC`)
+      .all(args.job_id) as Record<string, unknown>[];
+    return ok({ job_id: args.job_id, count: questions.length, questions });
+  },
+);
+
+server.registerTool(
+  "save_application_question",
+  {
+    description: "Update the answer for a single application question by id. Use this to edit or approve an answer before the job is submitted.",
+    inputSchema: {
+      id: z.number().int().describe("application_questions row id"),
+      answer: z.string().describe("Updated answer text"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const row = db.prepare(`SELECT id, job_id, question FROM application_questions WHERE id = ?`).get(args.id) as
+      | { id: number; job_id: number; question: string }
+      | undefined;
+    if (!row) return err(`application_question ${args.id} not found`);
+    db.prepare(`UPDATE application_questions SET answer = ?, updated_at = datetime('now') WHERE id = ?`).run(
+      args.answer,
+      args.id,
+    );
+    return ok({ ok: true, id: args.id, job_id: row.job_id, question: row.question });
   },
 );
 
