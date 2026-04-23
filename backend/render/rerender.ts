@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { renderPdf, jsonToTex } from "./resume.ts";
+import { renderPdf, jsonToTex } from "./resume";
 
 async function main() {
   const jobId = Number(process.argv[2]);
