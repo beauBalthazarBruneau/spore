@@ -77,7 +77,7 @@ function migrate(db: Database.Database) {
   const jobsDdl = db
     .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'`)
     .get() as { sql: string } | undefined;
-  const requiredStatuses = ["'fetched'", "'prescored'"];
+  const requiredStatuses = ["'fetched'", "'prescored'", "'submitting'", "'submission_failed'"];
   if (jobsDdl && requiredStatuses.some((s) => !jobsDdl.sql.includes(s))) {
     db.exec(`
       BEGIN;

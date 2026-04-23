@@ -715,6 +715,96 @@ server.registerTool(
   },
 );
 
+// ---------- Submission ----------
+
+server.registerTool(
+  "submit_job",
+  {
+    description: "Submit a job application via the Playwright submitter. Job must be in 'ready_to_apply' status. Transitions to 'submitting' then 'applied' on success or 'submission_failed' on error.",
+    inputSchema: {
+      job_id: z.number().int().describe("Job id"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+
+    const job = db
+      .prepare(
+        `SELECT j.id, j.url, j.title, j.status, c.ats_source
+           FROM jobs j LEFT JOIN companies c ON c.id = j.company_id
+          WHERE j.id = ?`,
+      )
+      .get(args.job_id) as { id: number; url: string | null; title: string; status: string; ats_source: string | null } | undefined;
+
+    if (!job) return err(`job ${args.job_id} not found`);
+    if (job.status !== "ready_to_apply") return err(`job ${args.job_id} is in status '${job.status}', expected 'ready_to_apply'`);
+    if (!job.url) return err(`job ${args.job_id} has no URL`);
+
+    const profile = db.prepare(`SELECT * FROM profile WHERE id = 1`).get() as Record<string, unknown> | undefined;
+    if (!profile) return err("profile not found — set up profile before submitting");
+
+    const questions = db
+      .prepare(`SELECT id, question, answer, field_type, field_selector FROM application_questions WHERE job_id = ?`)
+      .all(args.job_id) as Array<{ id: number; question: string; answer: string | null; field_type: string | null; field_selector: string | null }>;
+
+    // Transition to submitting
+    db.prepare(`UPDATE jobs SET status = 'submitting', updated_at = datetime('now') WHERE id = ?`).run(args.job_id);
+    db.prepare(
+      `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_started', 'claude', ?)`,
+    ).run(args.job_id, JSON.stringify({ job_id: args.job_id }));
+
+    // Resolve profile — the profile module (SPORE-42) handles full resolution.
+    // For now we just pass the raw profile and questions; the submitter resolves the rest.
+    const { submitJob } = await import("../../submitter/index.js");
+    const { resolveProfile } = await import("../../submitter/profile.js");
+
+    let result;
+    let tmpDir: string | null = null;
+    try {
+      const { profile: resolvedProfile, tmpDir: td } = await resolveProfile(db, args.job_id);
+      tmpDir = td;
+
+      result = await submitJob({
+        jobId: args.job_id,
+        url: job.url,
+        atsSource: job.ats_source,
+        profile: resolvedProfile,
+        questions: questions.map((q) => ({
+          id: q.id,
+          question: q.question,
+          answer: q.answer,
+          fieldType: q.field_type,
+          fieldSelector: q.field_selector,
+        })),
+      });
+    } catch (e) {
+      result = { success: false, error: (e as Error).message };
+    } finally {
+      // Clean up temp files regardless of outcome
+      if (tmpDir) {
+        const { rmSync } = await import("node:fs");
+        try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      }
+    }
+
+    if (result.success) {
+      db.prepare(
+        `UPDATE jobs SET status = 'applied', submitted_at = datetime('now'), confirmation_ref = ?, updated_at = datetime('now') WHERE id = ?`,
+      ).run(result.confirmationRef ?? null, args.job_id);
+      db.prepare(
+        `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_completed', 'claude', ?)`,
+      ).run(args.job_id, JSON.stringify({ confirmation_ref: result.confirmationRef ?? null }));
+      return ok({ ok: true, job_id: args.job_id, title: job.title, confirmation_ref: result.confirmationRef ?? null });
+    } else {
+      db.prepare(`UPDATE jobs SET status = 'submission_failed', updated_at = datetime('now') WHERE id = ?`).run(args.job_id);
+      db.prepare(
+        `INSERT INTO events (entity_type, entity_id, action, actor, payload_json) VALUES ('job', ?, 'submission_failed', 'system', ?)`,
+      ).run(args.job_id, JSON.stringify({ error: result.error ?? "unknown error" }));
+      return err(`submission failed: ${result.error ?? "unknown error"}`);
+    }
+  },
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

@@ -29,13 +29,14 @@ export type JobStatus =
   | "fetched"
   | "new" | "approved" | "rejected" | "skipped"
   | "needs_tailoring" | "tailoring" | "tailored" | "ready_to_apply"
-  | "applied" | "interview_invite" | "declined" | "on_hold";
+  | "applied" | "interview_invite" | "declined" | "on_hold"
+  | "submitting" | "submission_failed";
 
 export const SWIPE_STATUS: JobStatus = "new";
 export const BOARD_COLUMNS: JobStatus[] = [
   "fetched", "new", "needs_tailoring", "tailoring", "tailored", "ready_to_apply", "applied", "interview_invite",
 ];
-export const BOARD_SIDE: JobStatus[] = ["declined", "on_hold"];
+export const BOARD_SIDE: JobStatus[] = ["declined", "on_hold", "submission_failed"];
 
 export type Job = {
   id: number;

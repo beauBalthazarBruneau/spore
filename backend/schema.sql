@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   status TEXT NOT NULL DEFAULT 'new' CHECK (status IN (
     'fetched','prescored',
     'new','approved','rejected','skipped',
-    'needs_tailoring','tailoring','tailored','ready_to_apply','applied','interview_invite','declined','on_hold'
+    'needs_tailoring','tailoring','tailored','ready_to_apply','applied','interview_invite','declined','on_hold',
+    'submitting','submission_failed'
   )),
   rejection_reason TEXT,
   rejection_note TEXT,
