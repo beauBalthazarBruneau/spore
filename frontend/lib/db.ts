@@ -62,6 +62,36 @@ function migrate(db: Database.Database) {
     db.exec(`ALTER TABLE profile ADD COLUMN base_resume_md TEXT`);
   }
   if (!profNames.has("base_resume_json")) db.exec(`ALTER TABLE profile ADD COLUMN base_resume_json TEXT`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mycel_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'divider')),
+      text TEXT NOT NULL DEFAULT '',
+      source TEXT NOT NULL DEFAULT 'web' CHECK(source IN ('web', 'telegram')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+}
+
+export type MycelMessage = {
+  id: number;
+  role: 'user' | 'assistant' | 'divider';
+  text: string;
+  source: 'web' | 'telegram';
+  created_at: string;
+};
+
+export function getMycelMessages(): MycelMessage[] {
+  return getDb().prepare(`SELECT * FROM mycel_messages ORDER BY id ASC`).all() as MycelMessage[];
+}
+
+export function logMycelMessage(role: 'user' | 'assistant', text: string, source: 'web' | 'telegram'): void {
+  getDb().prepare(`INSERT INTO mycel_messages (role, text, source) VALUES (?, ?, ?)`).run(role, text, source);
+}
+
+export function insertMycelDivider(source: 'web' | 'telegram'): void {
+  getDb().prepare(`INSERT INTO mycel_messages (role, text, source) VALUES ('divider', '', ?)`).run(source);
 }
 
 const JOB_SELECT = `

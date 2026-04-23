@@ -1,6 +1,7 @@
 import "./globals.css";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import ChatDrawer from "@/components/ChatDrawer";
 
 export const metadata = {
   title: "Spore",
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </div>
         </nav>
         <main>{children}</main>
+        <ChatDrawer />
       </body>
     </html>
   );
