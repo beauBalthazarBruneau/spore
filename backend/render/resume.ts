@@ -29,54 +29,79 @@ export function escapeTex(s: string): string {
 // JSON → LaTeX
 // ---------------------------------------------------------------------------
 
+// Map known link label prefixes to FontAwesome5 icons
+function linkIcon(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes("linkedin")) return "\\faLinkedin";
+  if (l.includes("github")) return "\\faGithub";
+  if (l.includes("website") || l.includes("web") || l.includes("portfolio")) return "\\faGlobe";
+  return "\\faLink";
+}
+
 export function jsonToTex(resume: ResumeJson): string {
   const { name, contact, summary, experience, education, skills } = resume;
 
-  // Contact row
-  const contactParts: string[] = [escapeTex(contact.email)];
-  if (contact.phone) contactParts.push(escapeTex(contact.phone));
-  if (contact.location) contactParts.push(escapeTex(contact.location));
+  // Contact icon row — mirrors master_resume.tex header style
+  const contactParts: string[] = [];
+  if (contact.phone)
+    contactParts.push(`\\raisebox{-0.1\\height}\\faPhone\\ ${escapeTex(contact.phone)}`);
+  if (contact.location)
+    contactParts.push(`\\raisebox{-0.1\\height}\\faMapMarker\\ ${escapeTex(contact.location)}`);
+  contactParts.push(
+    `\\href{mailto:${escapeTex(contact.email)}}{\\raisebox{-0.2\\height}\\faEnvelope\\ \\underline{${escapeTex(contact.email)}}}`
+  );
   if (contact.links) {
     for (const [label, url] of Object.entries(contact.links)) {
-      contactParts.push(`\\href{${escapeTex(url)}}{${escapeTex(label)}}`);
+      const icon = linkIcon(label);
+      contactParts.push(
+        `\\href{${escapeTex(url)}}{\\raisebox{-0.2\\height}${icon}\\ \\underline{${escapeTex(label)}}}`
+      );
     }
   }
 
   // Summary section
   const summaryTex = summary
-    ? `\\section*{Summary}\\hrule\\vspace{4pt}\n${escapeTex(summary)}\n`
+    ? `\\section{Summary}\n\\small{${escapeTex(summary)}}\n\\vspace{-8pt}\n`
     : "";
 
-  // Experience section
+  // Experience section — bullets wrapped in \small{\mbox{}} to match master_resume.tex
   const expItems = experience.map((exp) => {
     const bullets = exp.bullets
-      .map((b) => `  \\item ${escapeTex(b)}`)
+      .map((b) => `  \\item\\small{\\mbox{${escapeTex(b)}}}\\vspace{-2pt}`)
       .join("\n");
     const locationLine = exp.location
-      ? `\n\\textit{${escapeTex(exp.location)}}\n`
-      : "";
-    return `\\textbf{${escapeTex(exp.company)} --- ${escapeTex(exp.title)}} \\hfill ${escapeTex(exp.dates)}${locationLine}
-\\begin{itemize}[noitemsep,topsep=2pt,leftmargin=*]
+      ? ` & \\textit{\\small ${escapeTex(exp.location)}} \\\\`
+      : " \\\\";
+    return `  \\vspace{-2pt}\\item
+    \\begin{tabular*}{1.0\\textwidth}[t]{l@{\\extracolsep{\\fill}}r}
+      \\textbf{${escapeTex(exp.company)}} & \\textbf{\\small ${escapeTex(exp.dates)}} \\\\
+      \\textit{\\small ${escapeTex(exp.title)}}${locationLine}
+    \\end{tabular*}\\vspace{-7pt}
+    \\begin{itemize}
 ${bullets}
-\\end{itemize}
-\\vspace{4pt}`;
+    \\end{itemize}\\vspace{-10pt}`;
   });
 
   const experienceTex =
     experience.length > 0
-      ? `\\section*{Experience}\\hrule\\vspace{4pt}\n${expItems.join("\n")}\n`
+      ? `\\section{Experience}\n  \\begin{itemize}[leftmargin=0.0in, label={}]\n${expItems.join("\n")}\n  \\end{itemize}\n`
       : "";
 
   // Education section
   const eduItems = education.map(
     (edu) =>
-      `\\textbf{${escapeTex(edu.institution)}} \\hfill ${escapeTex(edu.dates)}\n` +
-      `${escapeTex(edu.degree)}\n`,
+      `  \\vspace{-2pt}\\item
+    \\begin{tabular*}{1.0\\textwidth}[t]{l@{\\extracolsep{\\fill}}r}
+      \\textbf{${escapeTex(edu.institution)}} \\\\
+    \\end{tabular*}\\vspace{-7pt}
+    \\begin{itemize}[leftmargin=0.15in]
+      \\item\\small{\\textit{${escapeTex(edu.degree)}} \\hfill ${escapeTex(edu.dates)}}\\vspace{-2pt}
+    \\end{itemize}\\vspace{-10pt}`,
   );
 
   const educationTex =
     education.length > 0
-      ? `\\section*{Education}\\hrule\\vspace{4pt}\n${eduItems.join("\\vspace{4pt}\n")}\n`
+      ? `\\section{Education}\n  \\begin{itemize}[leftmargin=0.0in, label={}]\n${eduItems.join("\n")}\n  \\end{itemize}\n`
       : "";
 
   // Skills section
@@ -85,31 +110,54 @@ ${bullets}
     const rows = Object.entries(skills)
       .map(
         ([category, items]) =>
-          `  \\textbf{${escapeTex(category)}:} & ${items.map(escapeTex).join(", ")} \\\\`,
+          `     \\textbf{${escapeTex(category)}}{: ${items.map(escapeTex).join(", ")}} \\\\`,
       )
       .join("\n");
-    skillsTex = `\\section*{Skills}\\hrule\\vspace{4pt}\n\\begin{tabular}{@{}p{1.2in}p{5in}@{}}\n${rows}\n\\end{tabular}\n`;
+    skillsTex = `\\section{Skills}\n \\begin{itemize}[leftmargin=0.0in, label={}]\n    \\small{\\item{\n${rows}\n    }}\n \\end{itemize}\n`;
   }
 
-  return `\\documentclass[11pt,letterpaper]{article}
-\\usepackage[margin=0.75in]{geometry}
-\\usepackage{enumitem}
-\\usepackage{titlesec}
-\\usepackage{hyperref}
-\\usepackage[T1]{fontenc}
-\\usepackage{lmodern}
-\\pagestyle{empty}
+  return `\\documentclass[letterpaper,11pt]{article}
 
-\\titlespacing*{\\section}{0pt}{8pt}{4pt}
+\\usepackage[top=0.375in,left=0.375in,right=0.375in,bottom=5pt]{geometry}
+\\usepackage{titlesec}
+\\usepackage[usenames,dvipsnames]{color}
+\\usepackage{enumitem}
+\\usepackage[hidelinks]{hyperref}
+\\usepackage{fancyhdr}
+\\usepackage{tabularx}
+\\usepackage{fontawesome5}
+\\usepackage{multicol}
+\\setlength{\\multicolsep}{0pt}
+\\input{glyphtounicode}
+
+\\pagestyle{fancy}
+\\fancyhf{}
+\\fancyfoot{}
+\\renewcommand{\\headrulewidth}{0pt}
+\\renewcommand{\\footrulewidth}{0pt}
+
+\\urlstyle{same}
+\\raggedbottom
+\\raggedright
+\\setlength{\\tabcolsep}{0in}
+
+\\titleformat{\\section}{%
+  \\vspace{-4pt}\\scshape\\raggedright\\large\\bfseries%
+}{}{0em}{}[\\color{black}\\titlerule \\vspace{-5pt}]
+
+\\pdfgentounicode=1
+
+\\renewcommand\\labelitemi{$\\vcenter{\\hbox{\\tiny$\\bullet$}}$}
+\\renewcommand\\labelitemii{$\\vcenter{\\hbox{\\tiny$\\bullet$}}$}
 
 \\begin{document}
 
 \\begin{center}
-\\textbf{\\LARGE ${escapeTex(name)}}\\\\[4pt]
-${contactParts.join(" \\quad|\\quad ")}
+  {\\Huge \\scshape ${escapeTex(name)}} \\\\ \\vspace{1pt}
+  \\small
+  ${contactParts.join(" ~\n  ")}
+  \\vspace{-8pt}
 \\end{center}
-
-\\vspace{4pt}
 
 ${summaryTex}
 ${experienceTex}
