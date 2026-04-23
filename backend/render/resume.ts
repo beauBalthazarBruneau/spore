@@ -39,7 +39,7 @@ function linkIcon(label: string): string {
 }
 
 export function jsonToTex(resume: ResumeJson): string {
-  const { name, contact, summary, experience, education, skills } = resume;
+  const { name, contact, summary, experience, education, projects, presentations, skills } = resume;
 
   // Contact icon row — mirrors master_resume.tex header style
   const contactParts: string[] = [];
@@ -84,24 +84,51 @@ ${bullets}
 
   const experienceTex =
     experience.length > 0
-      ? `\\section{Experience}\n  \\begin{itemize}[leftmargin=0.0in, label={}]\n${expItems.join("\n")}\n  \\end{itemize}\n`
+      ? `\\section{Experience}\n  \\begin{itemize}[leftmargin=0.0in, label={}]\n${expItems.map((item, i) => i === 0 ? item : `  \\vspace{8pt}\n${item}`).join("\n")}\n  \\end{itemize}\n`
       : "";
 
   // Education section
-  const eduItems = education.map(
-    (edu) =>
-      `  \\vspace{-2pt}\\item
+  const eduItems = education.map((edu) => {
+    const extraBullets = (edu.bullets ?? [])
+      .map((b) => `      \\item\\small{${escapeTex(b)}}\\vspace{-2pt}`)
+      .join("\n");
+    return `  \\vspace{-2pt}\\item
     \\begin{tabular*}{1.0\\textwidth}[t]{l@{\\extracolsep{\\fill}}r}
       \\textbf{${escapeTex(edu.institution)}} \\\\
     \\end{tabular*}\\vspace{-7pt}
     \\begin{itemize}[leftmargin=0.15in]
       \\item\\small{\\textit{${escapeTex(edu.degree)}} \\hfill ${escapeTex(edu.dates)}}\\vspace{-2pt}
-    \\end{itemize}\\vspace{-10pt}`,
-  );
+${extraBullets}
+    \\end{itemize}\\vspace{-10pt}`;
+  });
 
   const educationTex =
     education.length > 0
       ? `\\section{Education}\n  \\begin{itemize}[leftmargin=0.0in, label={}]\n${eduItems.join("\n")}\n  \\end{itemize}\n`
+      : "";
+
+  // Projects section
+  const projectItems = (projects ?? []).map((proj) => {
+    const bullets = proj.bullets
+      .map((b) => `  \\item\\small{\\mbox{${escapeTex(b)}}}\\vspace{-2pt}`)
+      .join("\n");
+    const datesStr = proj.dates ? ` \\hfill \\textbf{\\small ${escapeTex(proj.dates)}}` : "";
+    return `  \\vspace{-2pt}\\item
+    \\textbf{${escapeTex(proj.name)}}${datesStr}\\vspace{-7pt}
+    \\begin{itemize}
+${bullets}
+    \\end{itemize}\\vspace{-10pt}`;
+  });
+
+  const projectsTex =
+    projectItems.length > 0
+      ? `\\section{Technical Projects}\n  \\begin{itemize}[leftmargin=0.0in, label={}]\n${projectItems.map((item, i) => i === 0 ? item : `  \\vspace{8pt}\n${item}`).join("\n")}\n  \\end{itemize}\n`
+      : "";
+
+  // Presentations & Panels section
+  const presentationsTex =
+    (presentations ?? []).length > 0
+      ? `\\section{Presentations \\& Panels}\n  \\begin{itemize}[leftmargin=0.15in]\n${(presentations ?? []).map((p) => `    \\item\\small{${escapeTex(p)}}`).join("\n")}\n  \\end{itemize}\n`
       : "";
 
   // Skills section
@@ -162,6 +189,8 @@ ${bullets}
 ${summaryTex}
 ${experienceTex}
 ${educationTex}
+${projectsTex}
+${presentationsTex}
 ${skillsTex}
 
 \\end{document}
