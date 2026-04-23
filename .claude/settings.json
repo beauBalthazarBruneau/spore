@@ -22,7 +22,8 @@
       "WebFetch(domain:api.ashbyhq.com)",
       "WebFetch(domain:ats.rippling.com)",
       "mcp__spore__get_application_questions",
-      "mcp__spore__save_application_question"
+      "mcp__spore__save_application_question",
+      "mcp__spore__submit_job"
     ]
   }
 }

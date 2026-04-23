@@ -25,6 +25,8 @@ const COLUMN_LABELS: Record<JobStatus, string> = {
   approved: "",
   rejected: "",
   skipped: "",
+  submitting: "Submitting",
+  submission_failed: "Failed",
 };
 
 // ---------------------------------------------------------------------------
