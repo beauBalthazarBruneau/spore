@@ -128,7 +128,7 @@ ${bullets}
   // Presentations & Panels section
   const presentationsTex =
     (presentations ?? []).length > 0
-      ? `\\section{Presentations \\& Panels}\n  \\begin{itemize}[leftmargin=0.15in]\n${(presentations ?? []).map((p) => `    \\item\\small{${escapeTex(p)}}`).join("\n")}\n  \\end{itemize}\n`
+      ? `\\section{Presentations \\& Panels}\n  \\begin{itemize}[leftmargin=0.15in]\n${(presentations ?? []).map((p) => `    \\item\\small{${escapeTex(p)}}\\vspace{-2pt}`).join("\n")}\n  \\end{itemize}\n`
       : "";
 
   // Skills section
