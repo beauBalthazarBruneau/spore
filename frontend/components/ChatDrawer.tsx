@@ -2,26 +2,37 @@
 
 import { useState, useRef, useEffect } from 'react';
 
-type Message = { role: 'user' | 'assistant'; text: string };
+type Message = {
+  id: number;
+  role: 'user' | 'assistant' | 'divider';
+  text: string;
+  source: 'web' | 'telegram';
+  created_at: string;
+};
+
+type OptimisticMessage = {
+  id: number;
+  role: 'user' | 'assistant';
+  text: string;
+  source: 'web';
+  created_at: string;
+  optimistic?: boolean;
+};
 
 export default function ChatDrawer() {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      return JSON.parse(localStorage.getItem('mycel_messages') ?? '[]');
-    } catch {
-      return [];
-    }
-  });
+  const [messages, setMessages] = useState<(Message | OptimisticMessage)[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('mycel_messages', JSON.stringify(messages));
-  }, [messages]);
+    fetch('/api/agent')
+      .then((r) => r.json())
+      .then(setMessages)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,9 +47,15 @@ export default function ChatDrawer() {
 
     const userMessage = input.trim();
     setInput('');
-    setMessages((prev) => [...prev, { role: 'user', text: userMessage }]);
     setStreaming(true);
-    setMessages((prev) => [...prev, { role: 'assistant', text: '' }]);
+
+    const tempId = Date.now();
+    const now = new Date().toISOString();
+    setMessages((prev) => [
+      ...prev,
+      { id: tempId, role: 'user', text: userMessage, source: 'web', created_at: now, optimistic: true },
+      { id: tempId + 1, role: 'assistant', text: '', source: 'web', created_at: now, optimistic: true },
+    ]);
 
     try {
       const res = await fetch('/api/agent', {
@@ -47,9 +64,7 @@ export default function ChatDrawer() {
         body: JSON.stringify({ message: userMessage }),
       });
 
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -68,7 +83,6 @@ export default function ChatDrawer() {
           if (!line.startsWith('data: ')) continue;
           const payload = line.slice(6);
           if (payload === '[DONE]') break;
-
           try {
             const { text, error } = JSON.parse(payload);
             if (error) throw new Error(error);
@@ -76,20 +90,28 @@ export default function ChatDrawer() {
               assistantText += text;
               setMessages((prev) => {
                 const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', text: assistantText };
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  text: assistantText,
+                } as OptimisticMessage;
                 return updated;
               });
             }
-          } catch {
-            // skip malformed events
-          }
+          } catch { /* skip */ }
         }
       }
+
+      // Replace optimistic messages with persisted ones from DB
+      const refreshed = await fetch('/api/agent').then((r) => r.json());
+      setMessages(refreshed);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong';
       setMessages((prev) => {
         const updated = [...prev];
-        updated[updated.length - 1] = { role: 'assistant', text: `[error: ${msg}]` };
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          text: `[error: ${msg}]`,
+        } as OptimisticMessage;
         return updated;
       });
     } finally {
@@ -99,8 +121,8 @@ export default function ChatDrawer() {
 
   const clearSession = async () => {
     await fetch('/api/agent', { method: 'DELETE' });
-    setMessages([]);
-    localStorage.removeItem('mycel_messages');
+    const refreshed = await fetch('/api/agent').then((r) => r.json());
+    setMessages(refreshed);
   };
 
   return (
@@ -143,19 +165,30 @@ export default function ChatDrawer() {
               Ask Mycel about your pipeline.
             </p>
           )}
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <span
-                className={`inline-block px-3 py-2 rounded-lg max-w-[85%] text-sm whitespace-pre-wrap break-words ${
-                  msg.role === 'user'
-                    ? 'bg-emerald-800 text-emerald-100'
-                    : 'bg-zinc-800 text-zinc-200'
-                }`}
-              >
-                {msg.text || (streaming && i === messages.length - 1 ? '…' : '')}
-              </span>
-            </div>
-          ))}
+          {messages.map((msg) => {
+            if (msg.role === 'divider') {
+              return (
+                <div key={msg.id} className="flex items-center gap-2 py-1">
+                  <div className="flex-1 h-px bg-zinc-800" />
+                  <span className="text-xs text-zinc-600">new session</span>
+                  <div className="flex-1 h-px bg-zinc-800" />
+                </div>
+              );
+            }
+            return (
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <span
+                  className={`inline-block px-3 py-2 rounded-lg max-w-[85%] text-sm whitespace-pre-wrap break-words ${
+                    msg.role === 'user'
+                      ? 'bg-emerald-800 text-emerald-100'
+                      : 'bg-zinc-800 text-zinc-200'
+                  }`}
+                >
+                  {msg.text || (streaming && msg === messages[messages.length - 1] ? '…' : '')}
+                </span>
+              </div>
+            );
+          })}
           <div ref={bottomRef} />
         </div>
 

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -16,7 +17,23 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 MYCEL_DIR = Path(__file__).parent
 SPORE_ROOT = MYCEL_DIR.parent
-SESSION_FILE = MYCEL_DIR / "telegram_session.json"
+SESSION_FILE = MYCEL_DIR / "session.json"  # shared with web UI
+DB_PATH = os.environ.get("AUTOAPPLY_DB", str(SPORE_ROOT / "data" / "autoapply.db"))
+
+
+def log_message(role: str, text: str) -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO mycel_messages (role, text, source) VALUES (?, ?, 'telegram')",
+            (role, text),
+        )
+
+
+def insert_divider() -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO mycel_messages (role, text, source) VALUES ('divider', '', 'telegram')"
+        )
 
 
 def load_session_id() -> str | None:
@@ -92,6 +109,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             response, new_session_id = await run_claude(update.message.text, None)
 
         save_session_id(new_session_id)
+        log_message("user", update.message.text)
+        log_message("assistant", response)
         await send_response(update, response)
     except Exception as e:
         await update.message.reply_text(f"[error: {e}]")
@@ -103,6 +122,7 @@ async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if update.effective_user.id != ALLOWED_USER_ID:
         return
     clear_session_id()
+    insert_divider()
     await update.message.reply_text("Fresh session.")
 
 
