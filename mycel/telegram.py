@@ -1,0 +1,127 @@
+import asyncio
+import json
+import subprocess
+from pathlib import Path
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv(Path(__file__).parent / ".env")
+
+TELEGRAM_TOKEN = os.environ["MYCEL_TELEGRAM_TOKEN"]
+ALLOWED_USER_ID = int(os.environ["TELEGRAM_USER_ID"])
+
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+
+MYCEL_DIR = Path(__file__).parent
+SPORE_ROOT = MYCEL_DIR.parent
+SESSION_FILE = MYCEL_DIR / "telegram_session.json"
+
+
+def load_session_id() -> str | None:
+    if SESSION_FILE.exists():
+        return json.loads(SESSION_FILE.read_text()).get("session_id")
+    return None
+
+
+def save_session_id(session_id: str) -> None:
+    SESSION_FILE.write_text(json.dumps({"session_id": session_id}))
+
+
+def clear_session_id() -> None:
+    SESSION_FILE.write_text(json.dumps({"session_id": None}))
+
+
+def _run_claude(message: str, session_id: str | None) -> tuple[str, str]:
+    cmd = [
+        "claude",
+        "--print",
+        "--dangerously-skip-permissions",
+        "--output-format", "json",
+        "--add-dir", str(MYCEL_DIR),
+        "--model", "claude-sonnet-4-6",
+    ]
+    if session_id:
+        cmd += ["--resume", session_id]
+    cmd.append(message)
+
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(SPORE_ROOT))
+
+    try:
+        output = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Bad output: {result.stdout[:200]} | stderr: {result.stderr[:200]}")
+
+    if output.get("is_error"):
+        raise RuntimeError(output.get("result", "unknown error"))
+
+    return output["result"], output["session_id"]
+
+
+async def run_claude(message: str, session_id: str | None) -> tuple[str, str]:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _run_claude, message, session_id)
+
+
+async def keep_typing(bot, chat_id: int) -> None:
+    try:
+        while True:
+            await bot.send_chat_action(chat_id, "typing")
+            await asyncio.sleep(4)
+    except asyncio.CancelledError:
+        pass
+
+
+async def send_response(update: Update, text: str) -> None:
+    for i in range(0, len(text), 4096):
+        await update.message.reply_text(text[i:i + 4096], parse_mode="Markdown")
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != ALLOWED_USER_ID:
+        return
+
+    session_id = load_session_id()
+    typing = asyncio.create_task(keep_typing(context.bot, update.effective_chat.id))
+
+    try:
+        try:
+            response, new_session_id = await run_claude(update.message.text, session_id)
+        except RuntimeError:
+            response, new_session_id = await run_claude(update.message.text, None)
+
+        save_session_id(new_session_id)
+        await send_response(update, response)
+    except Exception as e:
+        await update.message.reply_text(f"[error: {e}]")
+    finally:
+        typing.cancel()
+
+
+async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != ALLOWED_USER_ID:
+        return
+    clear_session_id()
+    await update.message.reply_text("Fresh session.")
+
+
+async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != ALLOWED_USER_ID:
+        return
+    session_id = load_session_id()
+    status = f"Session: {session_id}" if session_id else "No active session."
+    await update.message.reply_text(status)
+
+
+def main() -> None:
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("new", handle_new))
+    app.add_handler(CommandHandler("status", handle_status))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    print("Mycel Telegram bot is awake.")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
