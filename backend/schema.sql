@@ -101,6 +101,21 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);
 
+-- Custom questions detected on the application form during the tailoring probe.
+-- field_selector is stored so the submitter can target the field directly without re-detecting.
+CREATE TABLE IF NOT EXISTS application_questions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL REFERENCES jobs(id),
+  question TEXT NOT NULL,
+  answer TEXT,
+  field_type TEXT,       -- 'text' | 'textarea' | 'select' | 'checkbox' | 'radio'
+  field_selector TEXT,   -- stable CSS selector (prefer name attr) for submitter reuse
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_application_questions_job ON application_questions(job_id);
+
 -- Tracks companies surfaced by the discover stage so they aren't re-shown.
 CREATE TABLE IF NOT EXISTS discovered_candidates (
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,

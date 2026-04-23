@@ -64,6 +64,20 @@ function migrate(db: Database.Database) {
   if (!profNames.has("base_resume_json")) db.exec(`ALTER TABLE profile ADD COLUMN base_resume_json TEXT`);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS application_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id),
+      question TEXT NOT NULL,
+      answer TEXT,
+      field_type TEXT,
+      field_selector TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_application_questions_job ON application_questions(job_id)`);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS mycel_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'divider')),
@@ -92,6 +106,29 @@ export function logMycelMessage(role: 'user' | 'assistant', text: string, source
 
 export function insertMycelDivider(source: 'web' | 'telegram'): void {
   getDb().prepare(`INSERT INTO mycel_messages (role, text, source) VALUES ('divider', '', ?)`).run(source);
+}
+
+export type ApplicationQuestion = {
+  id: number;
+  job_id: number;
+  question: string;
+  answer: string | null;
+  field_type: string | null;
+  field_selector: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export function getApplicationQuestions(jobId: number): ApplicationQuestion[] {
+  return getDb()
+    .prepare(`SELECT * FROM application_questions WHERE job_id = ? ORDER BY id ASC`)
+    .all(jobId) as ApplicationQuestion[];
+}
+
+export function saveApplicationQuestion(id: number, answer: string): void {
+  getDb()
+    .prepare(`UPDATE application_questions SET answer = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(answer, id);
 }
 
 const JOB_SELECT = `

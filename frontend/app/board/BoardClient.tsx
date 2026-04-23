@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -294,6 +294,15 @@ function Card({
 // ---------------------------------------------------------------------------
 // Drawer
 // ---------------------------------------------------------------------------
+type ApplicationQuestion = {
+  id: number;
+  job_id: number;
+  question: string;
+  answer: string | null;
+  field_type: string | null;
+  field_selector: string | null;
+};
+
 function Drawer({
   job,
   editMode,
@@ -311,6 +320,8 @@ function Drawer({
 }) {
   const [resumeDraft, setResumeDraft] = useState(job.resume_md ?? "");
   const [coverLetterDraft, setCoverLetterDraft] = useState(job.cover_letter_md ?? "");
+  const [questions, setQuestions] = useState<ApplicationQuestion[]>([]);
+  const [answerDrafts, setAnswerDrafts] = useState<Record<number, string>>({});
 
   // Keep drafts in sync if job prop changes (e.g. after a save)
   const [lastJobId, setLastJobId] = useState(job.id);
@@ -320,11 +331,35 @@ function Drawer({
     setLastJobId(job.id);
   }
 
+  // Load application questions for tailored+ jobs
+  useEffect(() => {
+    const probeStatuses = ["tailored", "ready_to_apply", "applied", "interview_invite"];
+    if (!probeStatuses.includes(job.status)) { setQuestions([]); return; }
+    fetch(`/api/jobs/${job.id}/application-questions`)
+      .then((r) => r.json())
+      .then((qs: ApplicationQuestion[]) => {
+        setQuestions(qs);
+        const drafts: Record<number, string> = {};
+        for (const q of qs) drafts[q.id] = q.answer ?? "";
+        setAnswerDrafts(drafts);
+      })
+      .catch(() => setQuestions([]));
+  }, [job.id, job.status]);
+
   function saveResume() {
     onSaveField(job.id, "resume_md", resumeDraft);
   }
   function saveCoverLetter() {
     onSaveField(job.id, "cover_letter_md", coverLetterDraft);
+  }
+  async function saveAnswer(questionId: number) {
+    const answer = answerDrafts[questionId] ?? "";
+    await fetch(`/api/jobs/${job.id}/application-questions`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questionId, answer }),
+    });
+    setQuestions((qs) => qs.map((q) => q.id === questionId ? { ...q, answer } : q));
   }
 
   const hasResume = Boolean(job.resume_md || job.resume_json);
@@ -473,6 +508,39 @@ function Drawer({
               ) : (
                 <pre className="text-sm text-zinc-300 whitespace-pre-wrap font-sans">{job.cover_letter_md}</pre>
               )}
+            </section>
+          )}
+
+          {/* Application Questions */}
+          {questions.length > 0 && (
+            <section>
+              <SectionHeading>Application Questions</SectionHeading>
+              <div className="space-y-4">
+                {questions.map((q) => (
+                  <div key={q.id} className="border border-zinc-800 rounded p-3 space-y-2">
+                    <p className="text-xs text-zinc-400 font-medium">{q.question}</p>
+                    {editMode ? (
+                      <div>
+                        <textarea
+                          className="w-full h-24 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
+                          value={answerDrafts[q.id] ?? ""}
+                          onChange={(e) => setAnswerDrafts((d) => ({ ...d, [q.id]: e.target.value }))}
+                        />
+                        <button
+                          className="mt-1 text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
+                          onClick={() => saveAnswer(q.id)}
+                        >
+                          Save Answer
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-zinc-300 whitespace-pre-wrap">
+                        {q.answer ?? <span className="text-amber-500 italic">No answer yet</span>}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </section>
           )}
 

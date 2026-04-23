@@ -59,6 +59,20 @@ function migrate(db: Database.Database) {
   }
   if (!profNames.has("base_resume_json")) db.exec(`ALTER TABLE profile ADD COLUMN base_resume_json TEXT`);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS application_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id),
+      question TEXT NOT NULL,
+      answer TEXT,
+      field_type TEXT,
+      field_selector TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_application_questions_job ON application_questions(job_id)`);
+
   // Rebuild jobs table if the CHECK constraint is missing required statuses.
   const jobsDdl = db
     .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'`)
