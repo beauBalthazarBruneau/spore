@@ -60,6 +60,7 @@ export default function BoardClient({ initialJobs }: { initialJobs: Job[] }) {
   const [jobs, setJobs] = useState(initialJobs);
   const [selected, setSelected] = useState<Job | null>(null);
   const [drawerEditMode, setDrawerEditMode] = useState(false);
+  const [submittingIds, setSubmittingIds] = useState<Set<number>>(new Set());
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const byStatus = useMemo(() => {
@@ -106,6 +107,24 @@ export default function BoardClient({ initialJobs }: { initialJobs: Job[] }) {
     });
   }
 
+  async function onSubmit(jobId: number) {
+    setSubmittingIds((s) => new Set(s).add(jobId));
+    updateJobLocally(jobId, { status: "submitting" });
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/submit`, { method: "POST" });
+      const data = await res.json() as { success: boolean; confirmationRef?: string; error?: string };
+      if (data.success) {
+        updateJobLocally(jobId, { status: "applied" });
+      } else {
+        updateJobLocally(jobId, { status: "submission_failed" });
+      }
+    } catch {
+      updateJobLocally(jobId, { status: "submission_failed" });
+    } finally {
+      setSubmittingIds((s) => { const n = new Set(s); n.delete(jobId); return n; });
+    }
+  }
+
   async function onSaveField(jobId: number, field: "resume_md" | "cover_letter_md", value: string) {
     updateJobLocally(jobId, { [field]: value });
     await fetch(`/api/jobs/${jobId}`, {
@@ -132,6 +151,8 @@ export default function BoardClient({ initialJobs }: { initialJobs: Job[] }) {
               onOpen={openDrawer}
               onTailor={onTailor}
               onApprove={onApprove}
+              onSubmit={onSubmit}
+              submittingIds={submittingIds}
             />
           ))}
         </div>
@@ -144,6 +165,8 @@ export default function BoardClient({ initialJobs }: { initialJobs: Job[] }) {
               onOpen={openDrawer}
               onTailor={onTailor}
               onApprove={onApprove}
+              onSubmit={onSubmit}
+              submittingIds={submittingIds}
               compact
             />
           ))}
@@ -172,6 +195,8 @@ function Column({
   onOpen,
   onTailor,
   onApprove,
+  onSubmit,
+  submittingIds,
   compact,
 }: {
   status: JobStatus;
@@ -179,6 +204,8 @@ function Column({
   onOpen: (j: Job, editMode?: boolean) => void;
   onTailor: (id: number) => void;
   onApprove: (id: number) => void;
+  onSubmit: (id: number) => void;
+  submittingIds: Set<number>;
   compact?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
@@ -201,6 +228,8 @@ function Column({
             onOpen={onOpen}
             onTailor={onTailor}
             onApprove={onApprove}
+            onSubmit={onSubmit}
+            isSubmitting={submittingIds.has(j.id)}
           />
         ))}
       </div>
@@ -216,11 +245,15 @@ function Card({
   onOpen,
   onTailor,
   onApprove,
+  onSubmit,
+  isSubmitting,
 }: {
   job: Job;
   onOpen: (j: Job, editMode?: boolean) => void;
   onTailor: (id: number) => void;
   onApprove: (id: number) => void;
+  onSubmit: (id: number) => void;
+  isSubmitting: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: String(job.id),
@@ -229,6 +262,9 @@ function Card({
   const isTailoring = job.status === "tailoring";
   const isTailored = job.status === "tailored";
   const isNeedsTailoring = job.status === "needs_tailoring";
+  const isReadyToApply = job.status === "ready_to_apply";
+  const isSubmittingStatus = job.status === "submitting" || isSubmitting;
+  const isSubmissionFailed = job.status === "submission_failed";
 
   function handleActionClick(e: React.MouseEvent, fn: () => void) {
     e.stopPropagation();
@@ -286,6 +322,35 @@ function Card({
             onClick={(e) => handleActionClick(e, () => onOpen(job, true))}
           >
             Edit
+          </button>
+        </div>
+      )}
+
+      {isReadyToApply && (
+        <div className="mt-2">
+          <button
+            className="text-[11px] bg-blue-800/60 hover:bg-blue-700/70 text-blue-300 px-2 py-0.5 rounded"
+            onClick={(e) => handleActionClick(e, () => onSubmit(job.id))}
+          >
+            Submit
+          </button>
+        </div>
+      )}
+
+      {isSubmittingStatus && (
+        <div className="mt-2 flex items-center gap-1 text-[11px] text-blue-400">
+          <Spinner /> Submitting…
+        </div>
+      )}
+
+      {isSubmissionFailed && (
+        <div className="mt-2 space-y-1">
+          <div className="text-[10px] text-red-400">Submission failed</div>
+          <button
+            className="text-[11px] bg-red-900/40 hover:bg-red-800/50 text-red-300 px-2 py-0.5 rounded"
+            onClick={(e) => handleActionClick(e, () => onSubmit(job.id))}
+          >
+            Retry
           </button>
         </div>
       )}
