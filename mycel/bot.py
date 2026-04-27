@@ -2,6 +2,7 @@ import asyncio
 import json
 import sqlite3
 import subprocess
+import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -118,6 +119,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         typing.cancel()
 
 
+async def _handle_image(update: Update, file_id: str, suffix: str, caption: str) -> None:
+    tg_file = await update.get_bot().get_file(file_id)
+
+    tmp_dir = SPORE_ROOT / "data" / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=suffix, dir=tmp_dir, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    await tg_file.download_to_drive(str(tmp_path))
+
+    message = f"{caption}\n\n[Image saved at {tmp_path}. Use the Read tool to view it.]"
+    session_id = load_session_id()
+    typing = asyncio.create_task(keep_typing(update.get_bot(), update.effective_chat.id))
+
+    try:
+        try:
+            response, new_session_id = await run_claude(message, session_id)
+        except RuntimeError:
+            response, new_session_id = await run_claude(message, None)
+
+        save_session_id(new_session_id)
+        log_message("user", f"[image] {caption}")
+        log_message("assistant", response)
+        await send_response(update, response)
+    except Exception as e:
+        await update.message.reply_text(f"[error: {e}]")
+    finally:
+        typing.cancel()
+        tmp_path.unlink(missing_ok=True)
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != ALLOWED_USER_ID:
+        return
+    caption = update.message.caption or "I sent you an image."
+    photo = update.message.photo[-1]  # highest resolution
+    await _handle_image(update, photo.file_id, ".jpg", caption)
+
+
+async def handle_document_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != ALLOWED_USER_ID:
+        return
+    doc = update.message.document
+    caption = update.message.caption or "I sent you an image."
+    suffix = Path(doc.file_name or "image.jpg").suffix or ".jpg"
+    await _handle_image(update, doc.file_id, suffix, caption)
+
+
 async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != ALLOWED_USER_ID:
         return
@@ -134,12 +182,20 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(status)
 
 
+async def handle_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    import traceback
+    print(f"[error] {context.error}\n{''.join(traceback.format_exception(type(context.error), context.error, context.error.__traceback__))}", flush=True)
+
+
 def main() -> None:
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("new", handle_new))
     app.add_handler(CommandHandler("status", handle_status))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Mycel Telegram bot is awake.")
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.Document.IMAGE, handle_document_image))
+    app.add_error_handler(handle_error)
+    print("Mycel Telegram bot is awake.", flush=True)
     app.run_polling()
 
 
