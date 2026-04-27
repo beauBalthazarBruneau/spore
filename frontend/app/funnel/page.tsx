@@ -1,4 +1,5 @@
 import { getFunnelReport, type FunnelDay } from "@/lib/db";
+import RunsTable from "./RunsTable";
 
 export const dynamic = "force-dynamic";
 
@@ -6,12 +7,13 @@ function sum(days: FunnelDay[], key: keyof FunnelDay): number {
   return days.reduce((n, d) => n + (d[key] as number), 0);
 }
 
+
 export default function FunnelPage() {
-  const { days, top_filter_reasons } = getFunnelReport();
+  const { days, top_filter_reasons, runs } = getFunnelReport();
 
   const cols: { key: keyof FunnelDay; label: string }[] = [
     { key: "date", label: "Date" },
-    { key: "fetched", label: "Fetched" },
+    { key: "fetched", label: "From ATS" },
     { key: "duped", label: "Duped" },
     { key: "hard_filtered", label: "Hard filtered" },
     { key: "prescored", label: "Prescored" },
@@ -99,6 +101,12 @@ export default function FunnelPage() {
           </table>
         </div>
       )}
+
+      <div className="mt-10">
+        <h2 className="text-base font-semibold mb-1">Pipeline runs</h2>
+        <p className="text-sm text-zinc-400 mb-4">Last 7 days, newest first</p>
+        <RunsTable runs={runs} />
+      </div>
     </div>
   );
 }

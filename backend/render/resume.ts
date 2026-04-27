@@ -145,7 +145,7 @@ ${bullets}
 
   return `\\documentclass[letterpaper,11pt]{article}
 
-\\usepackage[top=0.375in,left=0.375in,right=0.375in,bottom=5pt]{geometry}
+\\usepackage[top=0.375in,left=0.375in,right=0.375in,bottom=0.25in]{geometry}
 \\usepackage{titlesec}
 \\usepackage[usenames,dvipsnames]{color}
 \\usepackage{enumitem}

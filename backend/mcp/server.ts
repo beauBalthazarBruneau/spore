@@ -329,6 +329,8 @@ server.registerTool(
       "Update-by-id: promote/demote jobs after scoring. score >= threshold sets status='new' (ready for Swipe); below sets status='rejected' with decline_reason (falls back to 'score N < threshold'). Logs a score_jobs_run event. Operates on existing rows — does not insert.",
     inputSchema: {
       threshold: z.number().int().optional().describe("Default 60"),
+      input_tokens: z.number().int().optional().describe("Total input tokens used across all scoring turns"),
+      output_tokens: z.number().int().optional().describe("Total output tokens used across all scoring turns"),
       items: z
         .array(
           z.object({
@@ -370,7 +372,11 @@ server.registerTool(
       0,
       "score_jobs_run",
       "claude",
-      JSON.stringify({ total: args.items.length, promoted, declined, threshold, not_found: not_found.length }),
+      JSON.stringify({
+        total: args.items.length, promoted, declined, threshold, not_found: not_found.length,
+        ...(args.input_tokens != null && { input_tokens: args.input_tokens }),
+        ...(args.output_tokens != null && { output_tokens: args.output_tokens }),
+      }),
     );
     return ok({ total: args.items.length, promoted, declined, threshold, not_found });
   },
