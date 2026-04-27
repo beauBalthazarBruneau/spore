@@ -337,9 +337,18 @@ export type FunnelDay = {
 
 export type FilterReason = { reason: string; count: number };
 
+export type PipelineRun = {
+  timestamp: string;
+  stage: "discover-companies" | "discover-jobs" | "prescore" | "score-jobs";
+  summary: Record<string, number | string>;
+  input_tokens: number | null;
+  output_tokens: number | null;
+};
+
 export type FunnelReport = {
   days: FunnelDay[];
   top_filter_reasons: FilterReason[];
+  runs: PipelineRun[];
 };
 
 export function getFunnelReport(): FunnelReport {
@@ -348,9 +357,12 @@ export function getFunnelReport(): FunnelReport {
   const jobRows = db.prepare(`
     SELECT
       date(discovered_at) as date,
-      COUNT(*) as fetched,
+      -- net new = all rows inserted (post-dedup), including hard-filtered
+      COUNT(*) as net_new,
       SUM(CASE WHEN rejected_by = 'filter' THEN 1 ELSE 0 END) as hard_filtered,
-      SUM(CASE WHEN status = 'prescored' THEN 1 ELSE 0 END) as prescored,
+      -- prescored = all jobs that have passed through the prescore step,
+      -- regardless of current status (not still 'fetched', not hard-filtered)
+      SUM(CASE WHEN status != 'fetched' AND (rejected_by IS NULL OR rejected_by != 'filter') THEN 1 ELSE 0 END) as prescored,
       SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as to_review,
       SUM(CASE WHEN status IN ('approved','needs_tailoring','tailoring','tailored','ready_to_apply','applied','interview_invite') THEN 1 ELSE 0 END) as approved,
       SUM(CASE WHEN rejected_by = 'user' THEN 1 ELSE 0 END) as rejected_by_user,
@@ -359,25 +371,40 @@ export function getFunnelReport(): FunnelReport {
     WHERE discovered_at >= date('now', '-7 days')
     GROUP BY date(discovered_at)
     ORDER BY date DESC
-  `).all() as Array<Omit<FunnelDay, 'duped'>>;
+  `).all() as Array<{ date: string; net_new: number; hard_filtered: number; prescored: number; to_review: number; approved: number; rejected_by_user: number; skipped: number }>;
 
-  const dupedRows = db.prepare(`
-    SELECT date(created_at) as date, SUM(json_extract(payload_json, '$.dupes')) as duped
+  // fetched = total seen by the ATS fetcher (including dupes), from event payload
+  // duped = how many were skipped as duplicates
+  const eventRows = db.prepare(`
+    SELECT
+      date(created_at) as date,
+      SUM(json_extract(payload_json, '$.fetched')) as fetched,
+      SUM(json_extract(payload_json, '$.dupes')) as duped
     FROM events
-    WHERE action LIKE '%fetch_run%'
+    WHERE action = 'discover-jobs-by-companies_fetch_run'
       AND created_at >= date('now', '-7 days')
     GROUP BY date(created_at)
-  `).all() as Array<{ date: string; duped: number | null }>;
+  `).all() as Array<{ date: string; fetched: number | null; duped: number | null }>;
 
-  const dupedByDate = new Map<string, number>();
-  for (const r of dupedRows) {
-    dupedByDate.set(r.date, r.duped ?? 0);
+  const eventByDate = new Map<string, { fetched: number; duped: number }>();
+  for (const r of eventRows) {
+    eventByDate.set(r.date, { fetched: r.fetched ?? 0, duped: r.duped ?? 0 });
   }
 
-  const days: FunnelDay[] = jobRows.map((r) => ({
-    ...r,
-    duped: dupedByDate.get(r.date) ?? 0,
-  }));
+  const days: FunnelDay[] = jobRows.map((r) => {
+    const ev = eventByDate.get(r.date) ?? { fetched: r.net_new, duped: 0 };
+    return {
+      date: r.date,
+      fetched: ev.fetched,
+      duped: ev.duped,
+      hard_filtered: r.hard_filtered,
+      prescored: r.prescored,
+      to_review: r.to_review,
+      approved: r.approved,
+      rejected_by_user: r.rejected_by_user,
+      skipped: r.skipped,
+    };
+  });
 
   const top_filter_reasons = db.prepare(`
     SELECT rejection_reason as reason, COUNT(*) as count
@@ -390,5 +417,60 @@ export function getFunnelReport(): FunnelReport {
     LIMIT 10
   `).all() as FilterReason[];
 
-  return { days, top_filter_reasons };
+  const runRows = db.prepare(`
+    SELECT action, created_at, payload_json
+    FROM events
+    WHERE action IN (
+      'discover-companies_fetch_run',
+      'discover-jobs-by-companies_fetch_run',
+      'prescore_fetch_run',
+      'score_jobs_run'
+    )
+      AND created_at >= date('now', '-7 days')
+    ORDER BY created_at DESC
+  `).all() as Array<{ action: string; created_at: string; payload_json: string }>;
+
+  const runs: PipelineRun[] = runRows.map((r) => {
+    const p = JSON.parse(r.payload_json);
+    let stage: PipelineRun["stage"];
+    let summary: Record<string, number | string>;
+
+    if (r.action === "discover-companies_fetch_run") {
+      stage = "discover-companies";
+      summary = {
+        net_new: Array.isArray(p.candidates) ? p.candidates.length : 0,
+        already_tracked: p.already_tracked ?? 0,
+        articles_scanned: p.articles_scanned ?? 0,
+      };
+    } else if (r.action === "discover-jobs-by-companies_fetch_run") {
+      stage = "discover-jobs";
+      summary = {
+        from_ats: p.fetched ?? 0,
+        inserted: p.inserted ?? 0,
+        hard_filtered: p.rejected ?? 0,
+        dupes: p.dupes ?? 0,
+      };
+    } else if (r.action === "prescore_fetch_run") {
+      stage = "prescore";
+      summary = {
+        prescored: p.prescored ?? 0,
+        skipped: p.skipped ?? 0,
+        errors: p.errors ?? 0,
+      };
+    } else {
+      stage = "score-jobs";
+      summary = {
+        total: p.total ?? 0,
+        promoted: p.promoted ?? 0,
+        declined: p.declined ?? 0,
+        threshold: p.threshold ?? 60,
+      };
+    }
+
+    const input_tokens: number | null = p.input_tokens ?? null;
+    const output_tokens: number | null = p.output_tokens ?? null;
+    return { timestamp: r.created_at, stage, summary, input_tokens, output_tokens };
+  });
+
+  return { days, top_filter_reasons, runs };
 }
