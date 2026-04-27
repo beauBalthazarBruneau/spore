@@ -322,3 +322,73 @@ export function patchCompany(
 export function statusCounts() {
   return getDb().prepare(`SELECT status, COUNT(*) AS n FROM jobs GROUP BY status`).all() as { status: JobStatus; n: number }[];
 }
+
+export type FunnelDay = {
+  date: string;
+  fetched: number;
+  duped: number;
+  hard_filtered: number;
+  prescored: number;
+  to_review: number;
+  approved: number;
+  rejected_by_user: number;
+  skipped: number;
+};
+
+export type FilterReason = { reason: string; count: number };
+
+export type FunnelReport = {
+  days: FunnelDay[];
+  top_filter_reasons: FilterReason[];
+};
+
+export function getFunnelReport(): FunnelReport {
+  const db = getDb();
+
+  const jobRows = db.prepare(`
+    SELECT
+      date(discovered_at) as date,
+      COUNT(*) as fetched,
+      SUM(CASE WHEN rejected_by = 'filter' THEN 1 ELSE 0 END) as hard_filtered,
+      SUM(CASE WHEN status = 'prescored' THEN 1 ELSE 0 END) as prescored,
+      SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as to_review,
+      SUM(CASE WHEN status IN ('approved','needs_tailoring','tailoring','tailored','ready_to_apply','applied','interview_invite') THEN 1 ELSE 0 END) as approved,
+      SUM(CASE WHEN rejected_by = 'user' THEN 1 ELSE 0 END) as rejected_by_user,
+      SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) as skipped
+    FROM jobs
+    WHERE discovered_at >= date('now', '-7 days')
+    GROUP BY date(discovered_at)
+    ORDER BY date DESC
+  `).all() as Array<Omit<FunnelDay, 'duped'>>;
+
+  const dupedRows = db.prepare(`
+    SELECT date(created_at) as date, SUM(json_extract(payload_json, '$.dupes')) as duped
+    FROM events
+    WHERE action LIKE '%fetch_run%'
+      AND created_at >= date('now', '-7 days')
+    GROUP BY date(created_at)
+  `).all() as Array<{ date: string; duped: number | null }>;
+
+  const dupedByDate = new Map<string, number>();
+  for (const r of dupedRows) {
+    dupedByDate.set(r.date, r.duped ?? 0);
+  }
+
+  const days: FunnelDay[] = jobRows.map((r) => ({
+    ...r,
+    duped: dupedByDate.get(r.date) ?? 0,
+  }));
+
+  const top_filter_reasons = db.prepare(`
+    SELECT rejection_reason as reason, COUNT(*) as count
+    FROM jobs
+    WHERE rejected_by = 'filter'
+      AND discovered_at >= date('now', '-7 days')
+      AND rejection_reason IS NOT NULL
+    GROUP BY rejection_reason
+    ORDER BY count DESC
+    LIMIT 10
+  `).all() as FilterReason[];
+
+  return { days, top_filter_reasons };
+}
