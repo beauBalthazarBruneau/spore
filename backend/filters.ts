@@ -29,6 +29,11 @@ const ci = (s: string | undefined) => (s ?? "").toLowerCase();
 const includesAny = (hay: string, needles: string[] | undefined) =>
   !!needles?.some((n) => n && hay.includes(n.toLowerCase()));
 
+// Broad country/region strings that indicate a role is remote-eligible rather
+// than tied to a specific city. ATS boards often emit these for fully-remote or
+// work-from-anywhere postings.
+const BROAD_US_PATTERNS = /^(united states(?: of america)?|u\.?s\.?a?\.?|north america)$/i;
+
 export function applyHardFilters(p: RawPosting, criteria: Criteria): FilterResult {
   const ex = criteria.exclusions ?? {};
   const title = ci(p.title);
@@ -48,16 +53,30 @@ export function applyHardFilters(p: RawPosting, criteria: Criteria): FilterResul
     return { passed: false, reason: `salary ${p.salary_max} below floor ${criteria.salary_min}` };
   }
 
-  // Location filter: reject roles that are neither remote nor in an accepted location.
+  // Location filter: reject roles that are neither remote/hybrid nor in an accepted location.
   // Uses criteria.locations as the allowlist (e.g. ["New York, NY", "Remote"]).
   if (criteria.locations?.length) {
+    const acceptsRemote = criteria.locations.some((l) => /remote/i.test(l));
+    const acceptsHybrid = criteria.remote_pref === "hybrid" || criteria.remote_pref === "remote";
+
     const isRemote =
       /remote/i.test(p.remote ?? "") ||
       /remote/i.test(p.location ?? "");
-    const allowsRemote = criteria.locations.some((l) => /remote/i.test(l));
 
-    if (isRemote && allowsRemote) {
-      // Remote role + user accepts remote → pass
+    // "Hybrid" location strings indicate in-office-some-days roles; pass through
+    // when the user's remote_pref allows hybrid work.
+    const isHybrid = acceptsHybrid && /hybrid/i.test(p.location ?? "");
+
+    // Broad country/region strings (e.g. "United States", "North America") mean
+    // the ATS didn't specify a city — treat as remote-eligible when the user
+    // accepts remote or hybrid.
+    const isBroadUSRemote =
+      acceptsHybrid &&
+      p.location != null &&
+      BROAD_US_PATTERNS.test(p.location.trim());
+
+    if ((isRemote && acceptsRemote) || isHybrid || isBroadUSRemote) {
+      // Role work-type matches user preference → pass
     } else if (p.location) {
       // Extract city keywords from accepted locations for fuzzy matching.
       // "New York, NY" → "new york", "San Francisco, CA" → "san francisco"

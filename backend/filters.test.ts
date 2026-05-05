@@ -98,6 +98,58 @@ describe("applyHardFilters", () => {
     expect(r.passed).toBe(true);
   });
 
+  // SPORE-54: hybrid location support
+  it("passes standalone 'Hybrid' location when remote_pref is hybrid", () => {
+    const r = applyHardFilters(
+      { ...base, location: "Hybrid" },
+      { locations: ["New York, NY", "Remote"], remote_pref: "hybrid" },
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  it("rejects standalone 'Hybrid' location when remote_pref is onsite", () => {
+    const r = applyHardFilters(
+      { ...base, location: "Hybrid" },
+      { locations: ["New York, NY", "Remote"], remote_pref: "onsite" },
+    );
+    expect(r.passed).toBe(false);
+  });
+
+  it("passes 'Hybrid' when remote_pref is remote", () => {
+    const r = applyHardFilters(
+      { ...base, location: "Hybrid" },
+      { locations: ["New York, NY", "Remote"], remote_pref: "remote" },
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  // SPORE-54: broad US location strings
+  const broadUSLocations = [
+    "United States",
+    "United States of America",
+    "US",
+    "USA",
+    "North America",
+  ];
+
+  for (const loc of broadUSLocations) {
+    it(`passes '${loc}' when remote_pref is hybrid`, () => {
+      const r = applyHardFilters(
+        { ...base, location: loc },
+        { locations: ["New York, NY", "Remote"], remote_pref: "hybrid" },
+      );
+      expect(r.passed).toBe(true);
+    });
+  }
+
+  it("rejects 'United States' when remote_pref is onsite", () => {
+    const r = applyHardFilters(
+      { ...base, location: "United States" },
+      { locations: ["New York, NY", "Remote"], remote_pref: "onsite" },
+    );
+    expect(r.passed).toBe(false);
+  });
+
   it("rejects when description contains an excluded description keyword", () => {
     const r = applyHardFilters(
       { ...base, description: "This role requires security clearance required to work on classified programs." },
