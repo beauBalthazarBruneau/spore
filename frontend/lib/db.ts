@@ -51,6 +51,7 @@ function migrate(db: Database.Database) {
   if (!jobColNames.has("cover_letter_pdf")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_pdf BLOB`);
   if (!jobColNames.has("cover_letter_pdf_mime")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_pdf_mime TEXT`);
   if (!jobColNames.has("resume_json")) db.exec(`ALTER TABLE jobs ADD COLUMN resume_json TEXT`);
+  if (!jobColNames.has("experiment_id")) db.exec(`ALTER TABLE jobs ADD COLUMN experiment_id TEXT`);
   // Note: rejected_by backfill runs from backend/db.ts on its next boot. Frontend just adds the column.
 
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
