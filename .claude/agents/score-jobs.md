@@ -49,7 +49,7 @@ All DB access goes through the `spore` MCP server. No raw SQL, no shell-out.
 4. **Write results.** Call `mcp__spore__upsert_scored` with:
    ```
    {
-     threshold: 60,
+     threshold: 35,
      items: [{ id, score, match_explanation, decline_reason? }, ...]
    }
    ```
@@ -60,6 +60,6 @@ All DB access goes through the `spore` MCP server. No raw SQL, no shell-out.
 ## Rules
 
 - No raw SQL, no shell-out. Use the MCP tools.
-- Do not relax the threshold below 50 without noting it in the report.
+- Do not relax the threshold below 30 without noting it in the report.
 - Keep `match_explanation` to 1–2 sentences — it shows on the Swipe card.
 - `decline_reason` is optional; leave it off and the tool writes a default.
