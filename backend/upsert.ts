@@ -19,6 +19,7 @@ export interface UpsertOpts {
   rejection_reason?: string;
   decline_reason?: string;
   rejected_by?: "filter" | "agent" | "user";
+  experiment_id?: string;
 }
 
 // Returns { id, inserted } — inserted=false if the job already existed (dedup by source+source_job_id or url).
@@ -40,8 +41,8 @@ export function upsertJob(
       `INSERT INTO jobs (
         source, source_job_id, url, title, company_id, location, remote,
         salary_min, salary_max, salary_range, posted_at, description, raw_json,
-        score, match_explanation, status, rejection_reason, rejected_by
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        score, match_explanation, status, rejection_reason, rejected_by, experiment_id
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       p.source,
@@ -62,6 +63,7 @@ export function upsertJob(
       opts.status ?? "new",
       opts.rejection_reason ?? opts.decline_reason ?? null,
       opts.rejected_by ?? null,
+      opts.experiment_id ?? null,
     );
   return { id: Number(info.lastInsertRowid), inserted: true };
 }

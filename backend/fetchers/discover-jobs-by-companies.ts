@@ -7,10 +7,26 @@
 // - Auto-archive: archives companies with N consecutive empty fetches
 
 import type Database from "better-sqlite3";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { sources } from "../sources";
 import { applyHardFilters, type Criteria } from "../filters";
 import { upsertJob } from "../upsert";
 import type { RawPosting } from "../sources/types";
+import type { ExperimentLog } from "../self-improve/types";
+
+const EXPERIMENTS_DIR = resolve(__dirname, "../../.claude/self-improvement/experiments");
+
+/** Returns the experiment ID of any active (merged, awaiting swipes) experiment, or null. */
+function activeExperimentId(): string | null {
+  if (!existsSync(EXPERIMENTS_DIR)) return null;
+  const files = readdirSync(EXPERIMENTS_DIR).filter((f) => f.endsWith(".json"));
+  for (const f of files) {
+    const log = JSON.parse(readFileSync(resolve(EXPERIMENTS_DIR, f), "utf8")) as ExperimentLog;
+    if (log.status === "merged_awaiting_swipes") return log.id;
+  }
+  return null;
+}
 
 /** Statuses that are still "in the pipeline" and should be marked stale
  *  if the posting disappears from the ATS board. User-acted statuses
@@ -35,6 +51,9 @@ export async function run(db: Database.Database): Promise<RunReport> {
     | { criteria_json: string | null }
     | undefined;
   const criteria: Criteria = profileRow?.criteria_json ? JSON.parse(profileRow.criteria_json) : {};
+
+  // Tag new jobs with the active experiment ID if one is running.
+  const experimentId = activeExperimentId();
 
   const watched = db
     .prepare(
@@ -91,7 +110,7 @@ export async function run(db: Database.Database): Promise<RunReport> {
       rejected++;
       continue;
     }
-    upsertJob(db, p, { status: "fetched" });
+    upsertJob(db, p, { status: "fetched", experiment_id: experimentId ?? undefined });
     inserted++;
   }
 
