@@ -34,6 +34,24 @@ const includesAny = (hay: string, needles: string[] | undefined) =>
 // work-from-anywhere postings.
 const BROAD_US_PATTERNS = /^(united states(?: of america)?|u\.?s\.?a?\.?|north america)$/i;
 
+// Tokens that appear in hybrid location strings but are not city names.
+// Used to detect "Hybrid" with no city context ("Hybrid; In-Office", "Distributed; Hybrid").
+const HYBRID_NON_CITY_TOKENS = new Set([
+  "hybrid", "distributed", "remote", "in", "office", "onsite", "on", "site",
+  "and", "or", "the", "us", "work", "home", "based",
+]);
+
+// Returns true when a location containing "hybrid" has no identifiable city name —
+// only work-arrangement descriptors like "In-Office" or "Distributed".
+function isStandaloneHybrid(location: string): boolean {
+  const tokens = location
+    .toLowerCase()
+    .replace(/[^a-z]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  return tokens.every((t) => HYBRID_NON_CITY_TOKENS.has(t));
+}
+
 export function applyHardFilters(p: RawPosting, criteria: Criteria): FilterResult {
   const ex = criteria.exclusions ?? {};
   const title = ci(p.title);
@@ -63,9 +81,14 @@ export function applyHardFilters(p: RawPosting, criteria: Criteria): FilterResul
       /remote/i.test(p.remote ?? "") ||
       /remote/i.test(p.location ?? "");
 
-    // "Hybrid" location strings indicate in-office-some-days roles; pass through
-    // when the user's remote_pref allows hybrid work.
-    const isHybrid = acceptsHybrid && /hybrid/i.test(p.location ?? "");
+    // Standalone hybrid ("Hybrid", "Hybrid; In-Office", "Distributed; Hybrid") with
+    // no identifiable city passes when remote_pref allows hybrid. Hybrid+city strings
+    // ("Hybrid - San Francisco") fall through to city matching so only accepted
+    // cities pass — reject "Hybrid - SF", pass "Hybrid - New York".
+    const isStandalone =
+      acceptsHybrid &&
+      /hybrid/i.test(p.location ?? "") &&
+      isStandaloneHybrid(p.location ?? "");
 
     // Broad country/region strings (e.g. "United States", "North America") mean
     // the ATS didn't specify a city — treat as remote-eligible when the user
@@ -75,7 +98,7 @@ export function applyHardFilters(p: RawPosting, criteria: Criteria): FilterResul
       p.location != null &&
       BROAD_US_PATTERNS.test(p.location.trim());
 
-    if ((isRemote && acceptsRemote) || isHybrid || isBroadUSRemote) {
+    if ((isRemote && acceptsRemote) || isStandalone || isBroadUSRemote) {
       // Role work-type matches user preference → pass
     } else if (p.location) {
       // Extract city keywords from accepted locations for fuzzy matching.

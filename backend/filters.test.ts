@@ -99,28 +99,46 @@ describe("applyHardFilters", () => {
   });
 
   // SPORE-54: hybrid location support
-  it("passes standalone 'Hybrid' location when remote_pref is hybrid", () => {
-    const r = applyHardFilters(
-      { ...base, location: "Hybrid" },
-      { locations: ["New York, NY", "Remote"], remote_pref: "hybrid" },
-    );
-    expect(r.passed).toBe(true);
+  const hybridCriteria = { locations: ["New York, NY", "Remote"], remote_pref: "hybrid" };
+
+  it("passes standalone 'Hybrid' (no city) when remote_pref is hybrid", () => {
+    expect(applyHardFilters({ ...base, location: "Hybrid" }, hybridCriteria).passed).toBe(true);
   });
 
-  it("rejects standalone 'Hybrid' location when remote_pref is onsite", () => {
-    const r = applyHardFilters(
-      { ...base, location: "Hybrid" },
-      { locations: ["New York, NY", "Remote"], remote_pref: "onsite" },
-    );
+  it("passes 'Hybrid; In-Office' (no city) when remote_pref is hybrid", () => {
+    expect(applyHardFilters({ ...base, location: "Hybrid; In-Office" }, hybridCriteria).passed).toBe(true);
+  });
+
+  it("passes 'Distributed; Hybrid' (no city) when remote_pref is hybrid", () => {
+    expect(applyHardFilters({ ...base, location: "Distributed; Hybrid" }, hybridCriteria).passed).toBe(true);
+  });
+
+  it("passes 'Hybrid - New York' when remote_pref is hybrid", () => {
+    expect(applyHardFilters({ ...base, location: "Hybrid - New York" }, hybridCriteria).passed).toBe(true);
+  });
+
+  it("rejects 'Hybrid - San Francisco' when remote_pref is hybrid", () => {
+    const r = applyHardFilters({ ...base, location: "Hybrid - San Francisco" }, hybridCriteria);
     expect(r.passed).toBe(false);
+    expect(r.reason).toMatch(/not in accepted locations/);
+  });
+
+  it("rejects 'Hybrid - London' when remote_pref is hybrid", () => {
+    expect(applyHardFilters({ ...base, location: "Hybrid - London" }, hybridCriteria).passed).toBe(false);
+  });
+
+  it("rejects 'Hybrid - Palo Alto, CA' when remote_pref is hybrid", () => {
+    expect(applyHardFilters({ ...base, location: "Hybrid - Palo Alto, CA" }, hybridCriteria).passed).toBe(false);
+  });
+
+  it("rejects standalone 'Hybrid' when remote_pref is onsite", () => {
+    const criteria = { ...hybridCriteria, remote_pref: "onsite" };
+    expect(applyHardFilters({ ...base, location: "Hybrid" }, criteria).passed).toBe(false);
   });
 
   it("passes 'Hybrid' when remote_pref is remote", () => {
-    const r = applyHardFilters(
-      { ...base, location: "Hybrid" },
-      { locations: ["New York, NY", "Remote"], remote_pref: "remote" },
-    );
-    expect(r.passed).toBe(true);
+    const criteria = { ...hybridCriteria, remote_pref: "remote" };
+    expect(applyHardFilters({ ...base, location: "Hybrid" }, criteria).passed).toBe(true);
   });
 
   // SPORE-54: broad US location strings
