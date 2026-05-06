@@ -48,6 +48,14 @@ function migrate(db: Database.Database) {
   if (!jobColNames.has("cover_letter_pdf_mime")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_pdf_mime TEXT`);
   if (!jobColNames.has("resume_json")) db.exec(`ALTER TABLE jobs ADD COLUMN resume_json TEXT`);
   if (!jobColNames.has("experiment_id")) db.exec(`ALTER TABLE jobs ADD COLUMN experiment_id TEXT`);
+  if (!jobColNames.has("agent_rejection_reason")) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN agent_rejection_reason TEXT`);
+    db.exec(`UPDATE jobs SET agent_rejection_reason = rejection_reason WHERE rejected_by IN ('filter', 'agent')`);
+  }
+  if (!jobColNames.has("user_rejection_reason")) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN user_rejection_reason TEXT`);
+    db.exec(`UPDATE jobs SET user_rejection_reason = rejection_reason WHERE rejected_by = 'user'`);
+  }
 
   // profile column migrations
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;

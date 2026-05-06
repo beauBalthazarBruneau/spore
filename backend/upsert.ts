@@ -36,13 +36,16 @@ export function upsertJob(
   if (dedup) return { id: dedup.id, inserted: false };
 
   const companyId = upsertCompany(db, p.company_name, p.company_domain);
+  const reason = opts.rejection_reason ?? opts.decline_reason ?? null;
+  const isAgentRejection = opts.rejected_by === "filter" || opts.rejected_by === "agent";
   const info = db
     .prepare(
       `INSERT INTO jobs (
         source, source_job_id, url, title, company_id, location, remote,
         salary_min, salary_max, salary_range, posted_at, description, raw_json,
-        score, match_explanation, status, rejection_reason, rejected_by, experiment_id
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        score, match_explanation, status, rejection_reason,
+        agent_rejection_reason, user_rejection_reason, rejected_by, experiment_id
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       p.source,
@@ -61,7 +64,9 @@ export function upsertJob(
       opts.score ?? null,
       opts.match_explanation ?? null,
       opts.status ?? "new",
-      opts.rejection_reason ?? opts.decline_reason ?? null,
+      reason,
+      isAgentRejection ? reason : null,
+      opts.rejected_by === "user" ? reason : null,
       opts.rejected_by ?? null,
       opts.experiment_id ?? null,
     );
@@ -81,13 +86,19 @@ export function upsertScoredJob(
     )
     .get(p.source, p.source_job_id, p.url) as { id: number } | undefined;
   if (existing) {
+    const reason = opts.rejection_reason ?? opts.decline_reason ?? null;
+    const isAgentRejection = opts.rejected_by === "filter" || opts.rejected_by === "agent";
     db.prepare(
-      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?, rejection_reason = ?, rejected_by = ? WHERE id = ?`,
+      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?,
+        rejection_reason = ?, agent_rejection_reason = ?, user_rejection_reason = ?, rejected_by = ?
+       WHERE id = ?`,
     ).run(
       opts.status,
       opts.score,
       opts.match_explanation ?? null,
-      opts.rejection_reason ?? opts.decline_reason ?? null,
+      reason,
+      isAgentRejection ? reason : null,
+      opts.rejected_by === "user" ? reason : null,
       opts.rejected_by ?? null,
       existing.id,
     );
