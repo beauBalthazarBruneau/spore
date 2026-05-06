@@ -53,6 +53,8 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     status: "tailored",
     rejection_reason: null,
     rejection_note: null,
+    agent_rejection_reason: null,
+    user_rejection_reason: null,
     approval_reason: null,
     approval_note: null,
     notes: null,

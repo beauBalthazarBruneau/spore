@@ -347,7 +347,8 @@ server.registerTool(
     const db = getDb();
     const threshold = args.threshold ?? 60;
     const update = db.prepare(
-      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?, rejection_reason = ?, rejected_by = ? WHERE id = ?`,
+      `UPDATE jobs SET status = ?, score = ?, match_explanation = ?,
+        rejection_reason = ?, agent_rejection_reason = ?, rejected_by = ? WHERE id = ?`,
     );
     let promoted = 0;
     let declined = 0;
@@ -357,7 +358,7 @@ server.registerTool(
       const rejection_reason =
         status === "rejected" ? s.decline_reason ?? `score ${s.score} < ${threshold}` : null;
       const rejected_by = status === "rejected" ? "agent" : null;
-      const info = update.run(status, s.score, s.match_explanation ?? null, rejection_reason, rejected_by, s.id);
+      const info = update.run(status, s.score, s.match_explanation ?? null, rejection_reason, rejection_reason, rejected_by, s.id);
       if (info.changes === 0) {
         not_found.push(s.id);
         continue;
@@ -856,12 +857,12 @@ server.registerTool(
     }));
 
     const top_filter_reasons = db.prepare(`
-      SELECT rejection_reason as reason, COUNT(*) as count
+      SELECT COALESCE(agent_rejection_reason, rejection_reason) as reason, COUNT(*) as count
       FROM jobs
       WHERE rejected_by = 'filter'
         AND discovered_at >= date('now', '-7 days')
-        AND rejection_reason IS NOT NULL
-      GROUP BY rejection_reason
+        AND COALESCE(agent_rejection_reason, rejection_reason) IS NOT NULL
+      GROUP BY COALESCE(agent_rejection_reason, rejection_reason)
       ORDER BY count DESC
       LIMIT 10
     `).all() as Array<{ reason: string; count: number }>;

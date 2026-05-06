@@ -52,7 +52,9 @@ function migrate(db: Database.Database) {
   if (!jobColNames.has("cover_letter_pdf_mime")) db.exec(`ALTER TABLE jobs ADD COLUMN cover_letter_pdf_mime TEXT`);
   if (!jobColNames.has("resume_json")) db.exec(`ALTER TABLE jobs ADD COLUMN resume_json TEXT`);
   if (!jobColNames.has("experiment_id")) db.exec(`ALTER TABLE jobs ADD COLUMN experiment_id TEXT`);
-  // Note: rejected_by backfill runs from backend/db.ts on its next boot. Frontend just adds the column.
+  if (!jobColNames.has("agent_rejection_reason")) db.exec(`ALTER TABLE jobs ADD COLUMN agent_rejection_reason TEXT`);
+  if (!jobColNames.has("user_rejection_reason")) db.exec(`ALTER TABLE jobs ADD COLUMN user_rejection_reason TEXT`);
+  // Note: rejected_by backfill and agent/user rejection reason backfill run from backend/db.ts on its next boot.
 
   const profCols = db.prepare(`PRAGMA table_info(profile)`).all() as Array<{ name: string }>;
   const profNames = new Set(profCols.map((c) => c.name));
@@ -136,6 +138,7 @@ const JOB_SELECT = `
   SELECT j.id, j.title, c.name AS company, j.location, j.salary_range, j.url, j.source,
          j.description, j.score, j.match_explanation, j.status,
          j.rejection_reason, j.rejection_note, j.approval_reason, j.approval_note, j.notes,
+         j.agent_rejection_reason, j.user_rejection_reason,
          j.resume_tex, j.resume_md, j.resume_json, j.cover_letter_md, j.submitted_at, j.discovered_at, j.updated_at
   FROM jobs j LEFT JOIN companies c ON c.id = j.company_id
 `;
@@ -178,6 +181,7 @@ export function updateJob(id: number, patch: Partial<Job> & { actor?: "user" | "
   const values: any[] = [];
   const writable: (keyof Job)[] = [
     "rejection_reason", "rejection_note",
+    "user_rejection_reason",
     "approval_reason", "approval_note",
     "notes",
     "resume_md", "cover_letter_md",
@@ -201,7 +205,7 @@ export function updateJob(id: number, patch: Partial<Job> & { actor?: "user" | "
     id,
     `status:${current.status}->${nextStatus}`,
     patch.actor ?? "user",
-    JSON.stringify({ from: current.status, to: nextStatus, rejection_reason: patch.rejection_reason ?? null }),
+    JSON.stringify({ from: current.status, to: nextStatus, user_rejection_reason: patch.user_rejection_reason ?? patch.rejection_reason ?? null }),
   );
   return getJob(id)!;
 }

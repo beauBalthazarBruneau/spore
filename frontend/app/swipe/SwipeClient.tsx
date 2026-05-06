@@ -4,6 +4,7 @@ import type { Job } from "@/lib/types";
 
 const REJECT_REASONS = [
   "wrong_location", "salary_too_low", "role_mismatch",
+  "seniority_too_high", "already_applied",
   "posting_not_found", "other",
 ];
 
@@ -114,7 +115,7 @@ export default function SwipeClient({
         <RejectModal
           onCancel={() => setRejectingId(null)}
           onSubmit={(reason, note) => {
-            act(rejectingId, { status: "rejected", rejection_reason: reason, rejection_note: note || null });
+            act(rejectingId, { status: "rejected", rejection_reason: reason, user_rejection_reason: reason, rejection_note: note || null });
             setRejectingId(null);
           }}
         />
