@@ -64,10 +64,10 @@ export function jsonToTex(resume: ResumeJson): string {
     ? `\\section{Summary}\n\\small{${escapeTex(summary)}}\n\\vspace{-8pt}\n`
     : "";
 
-  // Experience section — bullets wrapped in \small{\mbox{}} to match master_resume.tex
+  // Experience section
   const expItems = experience.map((exp) => {
     const bullets = exp.bullets
-      .map((b) => `  \\item\\small{\\mbox{${escapeTex(b)}}}\\vspace{-2pt}`)
+      .map((b) => `  \\item\\small{${escapeTex(b)}}\\vspace{-2pt}`)
       .join("\n");
     const locationLine = exp.location
       ? ` & \\textit{\\small ${escapeTex(exp.location)}} \\\\`
@@ -110,7 +110,7 @@ ${extraBullets}
   // Projects section
   const projectItems = (projects ?? []).map((proj) => {
     const bullets = proj.bullets
-      .map((b) => `  \\item\\small{\\mbox{${escapeTex(b)}}}\\vspace{-2pt}`)
+      .map((b) => `  \\item\\small{${escapeTex(b)}}\\vspace{-2pt}`)
       .join("\n");
     const datesStr = proj.dates ? ` \\hfill \\textbf{\\small ${escapeTex(proj.dates)}}` : "";
     return `  \\vspace{-2pt}\\item
