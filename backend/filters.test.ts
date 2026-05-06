@@ -177,6 +177,71 @@ describe("applyHardFilters", () => {
     expect(r.reason).toMatch(/description excluded keyword/);
   });
 
+  // SPORE-58: seniority and function title exclusions
+  const seniorityExclusions = {
+    exclusions: {
+      title_keywords: [
+        "product marketing",
+        "staff product manager",
+        "group product manager",
+        "vp of product",
+        "vice president of product",
+        "vice president, product",
+      ],
+    },
+  };
+
+  it("rejects 'Product Marketing Manager' via product marketing exclusion", () => {
+    const r = applyHardFilters({ ...base, title: "Product Marketing Manager" }, seniorityExclusions);
+    expect(r.passed).toBe(false);
+    expect(r.reason).toMatch(/title excluded keyword/);
+  });
+
+  it("rejects 'Senior Product Marketing Manager' via product marketing exclusion", () => {
+    const r = applyHardFilters({ ...base, title: "Senior Product Marketing Manager" }, seniorityExclusions);
+    expect(r.passed).toBe(false);
+  });
+
+  it("rejects 'Staff Product Manager' via staff exclusion", () => {
+    const r = applyHardFilters({ ...base, title: "Staff Product Manager, Platform" }, seniorityExclusions);
+    expect(r.passed).toBe(false);
+  });
+
+  it("rejects 'Group Product Manager' via group exclusion", () => {
+    const r = applyHardFilters({ ...base, title: "Group Product Manager, Customer Interfaces" }, seniorityExclusions);
+    expect(r.passed).toBe(false);
+  });
+
+  it("rejects 'VP of Product' via vp exclusion", () => {
+    const r = applyHardFilters({ ...base, title: "VP of Product" }, seniorityExclusions);
+    expect(r.passed).toBe(false);
+  });
+
+  it("rejects 'Vice President of Product' via vice president exclusion", () => {
+    const r = applyHardFilters({ ...base, title: "Vice President of Product" }, seniorityExclusions);
+    expect(r.passed).toBe(false);
+  });
+
+  it("rejects 'Vice President, Product' via vice president exclusion", () => {
+    const r = applyHardFilters({ ...base, title: "Vice President, Product" }, seniorityExclusions);
+    expect(r.passed).toBe(false);
+  });
+
+  it("does not reject plain 'Product Manager' via seniority exclusions", () => {
+    const r = applyHardFilters({ ...base, title: "Product Manager" }, seniorityExclusions);
+    expect(r.passed).toBe(true);
+  });
+
+  it("does not reject 'Senior Product Manager' via seniority exclusions", () => {
+    const r = applyHardFilters({ ...base, title: "Senior Product Manager" }, seniorityExclusions);
+    expect(r.passed).toBe(true);
+  });
+
+  it("title keyword matching is case-insensitive", () => {
+    const r = applyHardFilters({ ...base, title: "VP OF PRODUCT" }, seniorityExclusions);
+    expect(r.passed).toBe(false);
+  });
+
   it("rejected postings have a non-null, non-empty reason string", () => {
     const r = applyHardFilters(base, { exclusions: { companies: ["acme"] } });
     expect(r.passed).toBe(false);
