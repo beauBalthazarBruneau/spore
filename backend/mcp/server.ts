@@ -1,12 +1,14 @@
 // Spore MCP server. Single channel agents use to talk to the SQLite db.
 //
 // Tools:
-//   upsert_company    — create/update a company (name + optional ATS info, watching, notes)
-//   probe_ats         — verify a (source, slug) pair returns jobs without writing
-//   get_profile       — read profile (criteria, base_resume_md, etc.) for the find-jobs agent
-//   upsert_profile    — create or update profile fields (partial updates via COALESCE)
-//   fetch_candidates  — run the find-jobs fetch+hard-filter+insert pipeline, return candidates
-//   upsert_scored     — promote/demote candidates after the agent has scored them
+//   upsert_company          — create/update a company (name + optional ATS info, watching, notes)
+//   probe_ats               — verify a (source, slug) pair returns jobs without writing
+//   get_profile             — read profile (criteria, base_resume_md, etc.) for the find-jobs agent
+//   upsert_profile          — create or update profile fields (partial updates via COALESCE)
+//   upsert_scored           — promote/demote candidates after the agent has scored them
+//   list_interview_rounds   — list prep rounds for a job
+//   save_interview_round    — create or update an interview round (label + prep_md)
+//   delete_interview_round  — delete a round by id
 //
 // Run via: npx tsx backend/mcp/server.ts (registered in .mcp.json)
 
@@ -636,6 +638,82 @@ server.registerTool(
       args.id,
     );
     return ok({ ok: true, id: args.id, job_id: row.job_id, question: row.question });
+  },
+);
+
+// ---------- Interview Rounds ----------
+
+server.registerTool(
+  "list_interview_rounds",
+  {
+    description: "Return all interview rounds for a job, ordered by round_number. Each round has a label and prep_md (markdown notes).",
+    inputSchema: {
+      job_id: z.number().int().describe("Job id"),
+    },
+  },
+  async (args) => {
+    const rows = getDb()
+      .prepare(`SELECT * FROM interview_rounds WHERE job_id = ? ORDER BY round_number ASC`)
+      .all(args.job_id) as Record<string, unknown>[];
+    const rounds = rows.map((r) => ({
+      ...r,
+      prep_md: Buffer.isBuffer(r.prep_md) ? (r.prep_md as Buffer).toString("utf8") : r.prep_md,
+    }));
+    return ok({ job_id: args.job_id, count: rounds.length, rounds });
+  },
+);
+
+server.registerTool(
+  "save_interview_round",
+  {
+    description: "Create a new interview round or update an existing one. Pass id to update; omit id to create (round_number auto-increments). Returns the saved round.",
+    inputSchema: {
+      job_id: z.number().int().describe("Job id"),
+      id: z.number().int().optional().describe("Round id — omit to create a new round"),
+      label: z.string().describe("Round label, e.g. 'Phone Screen', 'Technical', 'Onsite'"),
+      prep_md: z.string().describe("Prep notes as markdown — questions to ask, talking points, research"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    if (args.id != null) {
+      const existing = db.prepare(`SELECT id FROM interview_rounds WHERE id = ? AND job_id = ?`).get(args.id, args.job_id);
+      if (!existing) return err(`interview_round ${args.id} not found for job ${args.job_id}`);
+      db.prepare(
+        `UPDATE interview_rounds SET label = ?, prep_md = ?, updated_at = datetime('now') WHERE id = ? AND job_id = ?`,
+      ).run(args.label, args.prep_md, args.id, args.job_id);
+      const round = db.prepare(`SELECT * FROM interview_rounds WHERE id = ?`).get(args.id);
+      return ok({ action: "updated", round });
+    }
+    const maxRow = db
+      .prepare(`SELECT MAX(round_number) AS m FROM interview_rounds WHERE job_id = ?`)
+      .get(args.job_id) as { m: number | null };
+    const round_number = (maxRow.m ?? 0) + 1;
+    const info = db
+      .prepare(`INSERT INTO interview_rounds (job_id, round_number, label, prep_md) VALUES (?, ?, ?, ?)`)
+      .run(args.job_id, round_number, args.label, args.prep_md);
+    const round = db.prepare(`SELECT * FROM interview_rounds WHERE id = ?`).get(info.lastInsertRowid);
+    return ok({ action: "created", round });
+  },
+);
+
+server.registerTool(
+  "delete_interview_round",
+  {
+    description: "Delete an interview round by id. Verifies the round belongs to the given job_id before deleting.",
+    inputSchema: {
+      id: z.number().int().describe("interview_rounds row id"),
+      job_id: z.number().int().describe("Job id (ownership check)"),
+    },
+  },
+  async (args) => {
+    const db = getDb();
+    const row = db
+      .prepare(`SELECT id FROM interview_rounds WHERE id = ? AND job_id = ?`)
+      .get(args.id, args.job_id);
+    if (!row) return err(`interview_round ${args.id} not found for job ${args.job_id}`);
+    db.prepare(`DELETE FROM interview_rounds WHERE id = ?`).run(args.id);
+    return ok({ ok: true, deleted_id: args.id });
   },
 );
 

@@ -23,7 +23,10 @@
       "WebFetch(domain:ats.rippling.com)",
       "mcp__spore__get_application_questions",
       "mcp__spore__save_application_question",
-      "mcp__spore__submit_job"
+      "mcp__spore__submit_job",
+      "mcp__spore__list_interview_rounds",
+      "mcp__spore__save_interview_round",
+      "mcp__spore__delete_interview_round"
     ]
   }
 }

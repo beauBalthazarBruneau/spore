@@ -32,7 +32,8 @@ const COLUMN_LABELS: Record<JobStatus, string> = {
 // ---------------------------------------------------------------------------
 // Simple markdown → HTML (no external dep needed for basic formatting)
 // ---------------------------------------------------------------------------
-function mdToHtml(md: string): string {
+function mdToHtml(md: unknown): string {
+  if (typeof md !== "string") return "";
   return md
     // headings
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
@@ -174,6 +175,7 @@ export default function BoardClient({ initialJobs }: { initialJobs: Job[] }) {
       </DndContext>
       {selected && (
         <Drawer
+          key={selected.id}
           job={selected}
           editMode={drawerEditMode}
           onToggleEdit={() => setDrawerEditMode((v) => !v)}
@@ -370,6 +372,14 @@ type ApplicationQuestion = {
   field_selector: string | null;
 };
 
+type InterviewRound = {
+  id: number;
+  job_id: number;
+  round_number: number;
+  label: string;
+  prep_md: string | null;
+};
+
 function Drawer({
   job,
   editMode,
@@ -389,14 +399,13 @@ function Drawer({
   const [coverLetterDraft, setCoverLetterDraft] = useState(job.cover_letter_md ?? "");
   const [questions, setQuestions] = useState<ApplicationQuestion[]>([]);
   const [answerDrafts, setAnswerDrafts] = useState<Record<number, string>>({});
-
-  // Keep drafts in sync if job prop changes (e.g. after a save)
-  const [lastJobId, setLastJobId] = useState(job.id);
-  if (job.id !== lastJobId) {
-    setResumeDraft(job.resume_md ?? "");
-    setCoverLetterDraft(job.cover_letter_md ?? "");
-    setLastJobId(job.id);
-  }
+  const [interviewRounds, setInterviewRounds] = useState<InterviewRound[]>([]);
+  const [roundDrafts, setRoundDrafts] = useState<Record<number, { label: string; prep_md: string }>>({});
+  const [addingRound, setAddingRound] = useState(false);
+  const [newRoundLabel, setNewRoundLabel] = useState("");
+  const [openRoundId, setOpenRoundId] = useState<number | null>(null);
+  const [editingRoundId, setEditingRoundId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"details" | "interview">("details");
 
   // Load application questions for tailored+ jobs
   useEffect(() => {
@@ -413,6 +422,22 @@ function Drawer({
       .catch(() => setQuestions([]));
   }, [job.id, job.status]);
 
+  // Load interview rounds for interview_invite+
+  useEffect(() => {
+    if (job.status !== "interview_invite") { setInterviewRounds([]); return; }
+    fetch(`/api/jobs/${job.id}/interview-rounds`)
+      .then((r) => r.json())
+      .then((data: unknown) => {
+        const rounds = Array.isArray(data) ? data as InterviewRound[] : [];
+        setInterviewRounds(rounds);
+        const drafts: Record<number, { label: string; prep_md: string }> = {};
+        for (const r of rounds) drafts[r.id] = { label: r.label, prep_md: r.prep_md ?? "" };
+        setRoundDrafts(drafts);
+        if (rounds.length > 0) setOpenRoundId(rounds[0].id);
+      })
+      .catch(() => setInterviewRounds([]));
+  }, [job.id, job.status]);
+
   function saveResume() {
     onSaveField(job.id, "resume_md", resumeDraft);
   }
@@ -427,6 +452,51 @@ function Drawer({
       body: JSON.stringify({ questionId, answer }),
     });
     setQuestions((qs) => qs.map((q) => q.id === questionId ? { ...q, answer } : q));
+  }
+
+  async function saveRound(roundId: number) {
+    const draft = roundDrafts[roundId];
+    if (!draft) return;
+    const res = await fetch(`/api/jobs/${job.id}/interview-rounds`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roundId, label: draft.label, prepMd: draft.prep_md }),
+    });
+    if (!res.ok) return;
+    const updated = await res.json() as InterviewRound;
+    if (!updated?.id) return;
+    setInterviewRounds((rs) => rs.map((r) => r.id === roundId ? updated : r));
+    setEditingRoundId(null);
+  }
+
+  async function addRound() {
+    const label = newRoundLabel.trim() || `Round ${interviewRounds.length + 1}`;
+    const res = await fetch(`/api/jobs/${job.id}/interview-rounds`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label, prepMd: "" }),
+    });
+    if (!res.ok) return;
+    const round = await res.json() as InterviewRound;
+    if (!round?.id) return;
+    setInterviewRounds((rs) => [...rs, round]);
+    setRoundDrafts((d) => ({ ...d, [round.id]: { label: round.label, prep_md: "" } }));
+    setOpenRoundId(round.id);
+    setEditingRoundId(round.id);
+    setAddingRound(false);
+    setNewRoundLabel("");
+  }
+
+  async function deleteRound(roundId: number) {
+    await fetch(`/api/jobs/${job.id}/interview-rounds`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roundId }),
+    });
+    setInterviewRounds((rs) => rs.filter((r) => r.id !== roundId));
+    setRoundDrafts((d) => { const n = { ...d }; delete n[roundId]; return n; });
+    if (openRoundId === roundId) setOpenRoundId(null);
+    if (editingRoundId === roundId) setEditingRoundId(null);
   }
 
   const hasResume = Boolean(job.resume_md || job.resume_json);
@@ -482,148 +552,304 @@ function Drawer({
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-zinc-800 flex-shrink-0 px-5">
+          <button
+            className={`text-xs py-2.5 mr-4 border-b-2 transition-colors ${
+              activeTab === "details"
+                ? "border-zinc-300 text-zinc-200"
+                : "border-transparent text-zinc-500 hover:text-zinc-300"
+            }`}
+            onClick={() => setActiveTab("details")}
+          >
+            Job Details
+          </button>
+          {job.status === "interview_invite" && (
+            <button
+              className={`text-xs py-2.5 border-b-2 transition-colors ${
+                activeTab === "interview"
+                  ? "border-zinc-300 text-zinc-200"
+                  : "border-transparent text-zinc-500 hover:text-zinc-300"
+              }`}
+              onClick={() => setActiveTab("interview")}
+            >
+              Interview Prep
+            </button>
+          )}
+        </div>
+
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
-          {/* Description */}
-          {job.description && (
-            <section>
-              <SectionHeading>Job Description</SectionHeading>
-              <div
-                className="text-sm text-zinc-300 prose prose-invert prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: mdToHtml(job.description) }}
-              />
-            </section>
-          )}
-
-          {/* Resume */}
-          {(hasResume || editMode) && (
-            <section>
-              <div className="flex items-center justify-between mb-1">
-                <SectionHeading>Tailored Resume</SectionHeading>
-                <div className="flex gap-2">
-                  {hasResume && (
-                    <a
-                      href={`/api/jobs/${job.id}/pdf?type=resume`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-blue-400 hover:underline"
-                      data-testid="resume-pdf-link"
-                    >
-                      Download PDF ↓
-                    </a>
-                  )}
-                </div>
-              </div>
-              {editMode ? (
-                <div>
-                  <textarea
-                    data-testid="resume-editor"
-                    className="w-full h-72 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
-                    value={resumeDraft}
-                    onChange={(e) => setResumeDraft(e.target.value)}
+          {activeTab === "details" && (
+            <>
+              {/* Description */}
+              {job.description && (
+                <section>
+                  <SectionHeading>Job Description</SectionHeading>
+                  <div
+                    className="text-sm text-zinc-300 prose prose-invert prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: mdToHtml(job.description) }}
                   />
-                  <button
-                    data-testid="resume-save"
-                    className="mt-1 text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
-                    onClick={saveResume}
-                  >
-                    Save Resume
-                  </button>
-                </div>
-              ) : (
-                <iframe
-                  src={`/api/jobs/${job.id}/pdf?type=resume`}
-                  className="w-full rounded border border-zinc-700"
-                  style={{ height: "70vh" }}
-                  title="Tailored Resume PDF"
-                />
+                </section>
               )}
-            </section>
+
+              {/* Resume */}
+              {(hasResume || editMode) && (
+                <section>
+                  <div className="flex items-center justify-between mb-1">
+                    <SectionHeading>Tailored Resume</SectionHeading>
+                    <div className="flex gap-2">
+                      {hasResume && (
+                        <a
+                          href={`/api/jobs/${job.id}/pdf?type=resume`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-blue-400 hover:underline"
+                          data-testid="resume-pdf-link"
+                        >
+                          Download PDF ↓
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  {editMode ? (
+                    <div>
+                      <textarea
+                        data-testid="resume-editor"
+                        className="w-full h-72 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
+                        value={resumeDraft}
+                        onChange={(e) => setResumeDraft(e.target.value)}
+                      />
+                      <button
+                        data-testid="resume-save"
+                        className="mt-1 text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
+                        onClick={saveResume}
+                      >
+                        Save Resume
+                      </button>
+                    </div>
+                  ) : (
+                    <iframe
+                      src={`/api/jobs/${job.id}/pdf?type=resume`}
+                      className="w-full rounded border border-zinc-700"
+                      style={{ height: "70vh" }}
+                      title="Tailored Resume PDF"
+                    />
+                  )}
+                </section>
+              )}
+
+              {/* Cover Letter */}
+              {(job.cover_letter_md || editMode) && (
+                <section>
+                  <div className="flex items-center justify-between mb-1">
+                    <SectionHeading>Cover Letter</SectionHeading>
+                    {job.cover_letter_md && !editMode && (
+                      <button
+                        data-testid="cover-letter-copy"
+                        className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-2 py-0.5 rounded"
+                        onClick={() => navigator.clipboard.writeText(job.cover_letter_md ?? "")}
+                      >
+                        Copy
+                      </button>
+                    )}
+                  </div>
+                  {editMode ? (
+                    <div>
+                      <textarea
+                        data-testid="cover-letter-editor"
+                        className="w-full h-56 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
+                        value={coverLetterDraft}
+                        onChange={(e) => setCoverLetterDraft(e.target.value)}
+                      />
+                      <button
+                        data-testid="cover-letter-save"
+                        className="mt-1 text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
+                        onClick={saveCoverLetter}
+                      >
+                        Save Cover Letter
+                      </button>
+                    </div>
+                  ) : (
+                    <pre className="text-sm text-zinc-300 whitespace-pre-wrap font-sans">{job.cover_letter_md}</pre>
+                  )}
+                </section>
+              )}
+
+              {/* Application Questions */}
+              {questions.length > 0 && (
+                <section>
+                  <SectionHeading>Application Questions</SectionHeading>
+                  <div className="space-y-4">
+                    {questions.map((q) => (
+                      <div key={q.id} className="border border-zinc-800 rounded p-3 space-y-2">
+                        <p className="text-xs text-zinc-400 font-medium">{q.question}</p>
+                        {editMode ? (
+                          <div>
+                            <textarea
+                              className="w-full h-24 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
+                              value={answerDrafts[q.id] ?? ""}
+                              onChange={(e) => setAnswerDrafts((d) => ({ ...d, [q.id]: e.target.value }))}
+                            />
+                            <button
+                              className="mt-1 text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
+                              onClick={() => saveAnswer(q.id)}
+                            >
+                              Save Answer
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-zinc-300 whitespace-pre-wrap">
+                            {q.answer ?? <span className="text-amber-500 italic">No answer yet</span>}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Notes */}
+              {job.notes && (
+                <section>
+                  <SectionHeading>Notes</SectionHeading>
+                  <p className="text-sm text-zinc-400 whitespace-pre-wrap">{job.notes}</p>
+                </section>
+              )}
+
+              {/* Match explanation */}
+              {job.match_explanation && (
+                <section>
+                  <SectionHeading>Match Explanation</SectionHeading>
+                  <p className="text-sm text-zinc-400 whitespace-pre-wrap">{job.match_explanation}</p>
+                </section>
+              )}
+            </>
           )}
 
-          {/* Cover Letter */}
-          {(job.cover_letter_md || editMode) && (
+          {activeTab === "interview" && (
             <section>
-              <div className="flex items-center justify-between mb-1">
-                <SectionHeading>Cover Letter</SectionHeading>
-                {job.cover_letter_md && !editMode && (
+              <div className="flex items-center justify-between mb-2">
+                <SectionHeading>Interview Rounds</SectionHeading>
+                {!addingRound && (
                   <button
-                    data-testid="cover-letter-copy"
-                    className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-2 py-0.5 rounded"
-                    onClick={() => navigator.clipboard.writeText(job.cover_letter_md ?? "")}
+                    className="text-xs text-zinc-400 hover:text-zinc-200"
+                    onClick={() => setAddingRound(true)}
                   >
-                    Copy
+                    + Add Round
                   </button>
                 )}
               </div>
-              {editMode ? (
-                <div>
-                  <textarea
-                    data-testid="cover-letter-editor"
-                    className="w-full h-56 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
-                    value={coverLetterDraft}
-                    onChange={(e) => setCoverLetterDraft(e.target.value)}
-                  />
-                  <button
-                    data-testid="cover-letter-save"
-                    className="mt-1 text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
-                    onClick={saveCoverLetter}
-                  >
-                    Save Cover Letter
-                  </button>
-                </div>
-              ) : (
-                <pre className="text-sm text-zinc-300 whitespace-pre-wrap font-sans">{job.cover_letter_md}</pre>
+
+              {interviewRounds.length === 0 && !addingRound && (
+                <p className="text-sm text-zinc-500 italic">No rounds yet.</p>
               )}
-            </section>
-          )}
 
-          {/* Application Questions */}
-          {questions.length > 0 && (
-            <section>
-              <SectionHeading>Application Questions</SectionHeading>
-              <div className="space-y-4">
-                {questions.map((q) => (
-                  <div key={q.id} className="border border-zinc-800 rounded p-3 space-y-2">
-                    <p className="text-xs text-zinc-400 font-medium">{q.question}</p>
-                    {editMode ? (
-                      <div>
-                        <textarea
-                          className="w-full h-24 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
-                          value={answerDrafts[q.id] ?? ""}
-                          onChange={(e) => setAnswerDrafts((d) => ({ ...d, [q.id]: e.target.value }))}
-                        />
-                        <button
-                          className="mt-1 text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
-                          onClick={() => saveAnswer(q.id)}
-                        >
-                          Save Answer
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-zinc-300 whitespace-pre-wrap">
-                        {q.answer ?? <span className="text-amber-500 italic">No answer yet</span>}
-                      </p>
-                    )}
+              <div className="space-y-1">
+                {interviewRounds.map((round) => {
+                  const isOpen = openRoundId === round.id;
+                  const isEditing = editingRoundId === round.id;
+                  return (
+                    <div key={round.id} className="border border-zinc-800 rounded overflow-hidden">
+                      {/* Accordion header */}
+                      <button
+                        className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-zinc-900 transition-colors"
+                        onClick={() => setOpenRoundId(isOpen ? null : round.id)}
+                      >
+                        <span className="text-sm font-medium text-zinc-200">{round.label}</span>
+                        <span className="text-zinc-500 text-xs ml-2">{isOpen ? "▲" : "▼"}</span>
+                      </button>
+
+                      {/* Accordion body */}
+                      {isOpen && (
+                        <div className="border-t border-zinc-800 px-3 py-3 space-y-3">
+                          {isEditing ? (
+                            <>
+                              <input
+                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"
+                                value={roundDrafts[round.id]?.label ?? round.label}
+                                onChange={(e) => setRoundDrafts((d) => ({ ...d, [round.id]: { ...d[round.id], label: e.target.value } }))}
+                              />
+                              <textarea
+                                className="w-full h-64 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
+                                placeholder="Prep notes, questions to ask, talking points..."
+                                value={roundDrafts[round.id]?.prep_md ?? ""}
+                                onChange={(e) => setRoundDrafts((d) => ({ ...d, [round.id]: { ...d[round.id], prep_md: e.target.value } }))}
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  className="text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
+                                  onClick={() => saveRound(round.id)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  className="text-xs text-zinc-500 hover:text-zinc-300 px-3 py-1"
+                                  onClick={() => {
+                                    setEditingRoundId(null);
+                                    setRoundDrafts((d) => ({ ...d, [round.id]: { label: round.label, prep_md: round.prep_md ?? "" } }));
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  className="text-xs text-red-500 hover:text-red-400 ml-auto"
+                                  onClick={() => deleteRound(round.id)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {round.prep_md ? (
+                                <div
+                                  className="prose prose-invert prose-sm max-w-none text-zinc-300"
+                                  dangerouslySetInnerHTML={{ __html: mdToHtml(round.prep_md) }}
+                                />
+                              ) : (
+                                <p className="text-sm text-zinc-500 italic">No prep notes yet.</p>
+                              )}
+                              <button
+                                className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-2 py-0.5 rounded"
+                                onClick={() => setEditingRoundId(round.id)}
+                              >
+                                Edit
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {addingRound && (
+                  <div className="border border-zinc-700 rounded p-3 space-y-2">
+                    <input
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"
+                      placeholder={`Round ${interviewRounds.length + 1}`}
+                      value={newRoundLabel}
+                      onChange={(e) => setNewRoundLabel(e.target.value)}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        className="text-xs bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-300 px-3 py-1 rounded"
+                        onClick={addRound}
+                      >
+                        Add
+                      </button>
+                      <button
+                        className="text-xs text-zinc-500 hover:text-zinc-300 px-3 py-1"
+                        onClick={() => { setAddingRound(false); setNewRoundLabel(""); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
-            </section>
-          )}
-
-          {/* Notes */}
-          {job.notes && (
-            <section>
-              <SectionHeading>Notes</SectionHeading>
-              <p className="text-sm text-zinc-400 whitespace-pre-wrap">{job.notes}</p>
-            </section>
-          )}
-
-          {/* Match explanation */}
-          {job.match_explanation && (
-            <section>
-              <SectionHeading>Match Explanation</SectionHeading>
-              <p className="text-sm text-zinc-400 whitespace-pre-wrap">{job.match_explanation}</p>
             </section>
           )}
         </div>

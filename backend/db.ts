@@ -82,6 +82,19 @@ function migrate(db: Database.Database) {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_application_questions_job ON application_questions(job_id)`);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS interview_rounds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id),
+      round_number INTEGER NOT NULL DEFAULT 1,
+      label TEXT NOT NULL DEFAULT 'Round 1',
+      prep_md TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_interview_rounds_job ON interview_rounds(job_id)`);
+
   // Rebuild jobs table if the CHECK constraint is missing required statuses.
   const jobsDdl = db
     .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'`)

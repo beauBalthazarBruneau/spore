@@ -81,6 +81,19 @@ function migrate(db: Database.Database) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_application_questions_job ON application_questions(job_id)`);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS interview_rounds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id),
+      round_number INTEGER NOT NULL DEFAULT 1,
+      label TEXT NOT NULL DEFAULT 'Round 1',
+      prep_md TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_interview_rounds_job ON interview_rounds(job_id)`);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS mycel_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'divider')),
@@ -132,6 +145,49 @@ export function saveApplicationQuestion(id: number, answer: string): void {
   getDb()
     .prepare(`UPDATE application_questions SET answer = ?, updated_at = datetime('now') WHERE id = ?`)
     .run(answer, id);
+}
+
+export type InterviewRound = {
+  id: number;
+  job_id: number;
+  round_number: number;
+  label: string;
+  prep_md: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function bufToStr(v: unknown): string | null {
+  if (v == null) return null;
+  if (Buffer.isBuffer(v)) return v.toString("utf8");
+  return String(v);
+}
+
+export function getInterviewRounds(jobId: number): InterviewRound[] {
+  const rows = getDb()
+    .prepare(`SELECT * FROM interview_rounds WHERE job_id = ? ORDER BY round_number ASC`)
+    .all(jobId) as Array<Record<string, unknown>>;
+  return rows.map((r) => ({ ...r, prep_md: bufToStr(r.prep_md) }) as InterviewRound);
+}
+
+export function upsertInterviewRound(jobId: number, roundId: number | null, label: string, prepMd: string): InterviewRound {
+  const db = getDb();
+  if (roundId) {
+    db.prepare(`UPDATE interview_rounds SET label = ?, prep_md = ?, updated_at = datetime('now') WHERE id = ? AND job_id = ?`)
+      .run(label, prepMd, roundId, jobId);
+    const row = db.prepare(`SELECT * FROM interview_rounds WHERE id = ?`).get(roundId) as Record<string, unknown>;
+    return { ...row, prep_md: bufToStr(row.prep_md) } as InterviewRound;
+  }
+  const maxRow = db.prepare(`SELECT MAX(round_number) as m FROM interview_rounds WHERE job_id = ?`).get(jobId) as { m: number | null };
+  const nextNum = (maxRow.m ?? 0) + 1;
+  const info = db.prepare(`INSERT INTO interview_rounds (job_id, round_number, label, prep_md) VALUES (?, ?, ?, ?)`)
+    .run(jobId, nextNum, label, prepMd);
+  const row = db.prepare(`SELECT * FROM interview_rounds WHERE id = ?`).get(info.lastInsertRowid) as Record<string, unknown>;
+  return { ...row, prep_md: bufToStr(row.prep_md) } as InterviewRound;
+}
+
+export function deleteInterviewRound(roundId: number, jobId: number): void {
+  getDb().prepare(`DELETE FROM interview_rounds WHERE id = ? AND job_id = ?`).run(roundId, jobId);
 }
 
 const JOB_SELECT = `

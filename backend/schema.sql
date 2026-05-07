@@ -117,6 +117,18 @@ CREATE TABLE IF NOT EXISTS application_questions (
 
 CREATE INDEX IF NOT EXISTS idx_application_questions_job ON application_questions(job_id);
 
+CREATE TABLE IF NOT EXISTS interview_rounds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL REFERENCES jobs(id),
+  round_number INTEGER NOT NULL DEFAULT 1,
+  label TEXT NOT NULL DEFAULT 'Round 1',
+  prep_md TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_interview_rounds_job ON interview_rounds(job_id);
+
 -- Tracks companies surfaced by the discover stage so they aren't re-shown.
 CREATE TABLE IF NOT EXISTS discovered_candidates (
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
