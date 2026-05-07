@@ -10,8 +10,8 @@
  */
 
 import { chromium } from "playwright";
-import Anthropic from "@anthropic-ai/sdk";
 import { getDb } from "../backend/db";
+import { extractAshbyFields } from "./adapters/probe-ashby";
 
 // Standard field labels/names that every ATS includes — we skip these.
 const STANDARD_FIELD_PATTERNS = [
@@ -60,39 +60,13 @@ function buildSelector(el: { tag: string; name: string | null; id: string | null
   return `${el.tag}:nth-of-type(${el.index + 1})`;
 }
 
-async function generateAnswer(
-  client: Anthropic,
-  question: string,
-  jobContext: { title: string; company: string; description: string | null },
-  profile: { full_name: string | null; preferences_json: string | null },
-): Promise<string> {
-  const preferences = profile.preferences_json ? JSON.parse(profile.preferences_json) : {};
-  const prompt = `You are filling out a job application on behalf of ${profile.full_name ?? "the applicant"}.
-
-Job: ${jobContext.title} at ${jobContext.company}
-Job description excerpt: ${(jobContext.description ?? "").slice(0, 1500)}
-
-Applicant preferences/notes: ${JSON.stringify(preferences)}
-
-Application question: "${question}"
-
-Write a concise, honest, professional answer to this question. 2–4 sentences max unless the question requires more detail. Do not fabricate credentials or experiences. If you lack enough context to answer confidently, write a placeholder like "[Answer needed]".`;
-
-  const msg = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 512,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  return (msg.content[0] as { type: "text"; text: string }).text.trim();
-}
 
 async function probe(jobId: number): Promise<void> {
   const db = getDb();
 
   const job = db
-    .prepare(`SELECT j.id, j.url, j.title, j.description, c.name AS company FROM jobs j LEFT JOIN companies c ON c.id = j.company_id WHERE j.id = ?`)
-    .get(jobId) as { id: number; url: string | null; title: string; description: string | null; company: string | null } | undefined;
+    .prepare(`SELECT j.id, j.url, j.title, j.description, j.source, c.name AS company FROM jobs j LEFT JOIN companies c ON c.id = j.company_id WHERE j.id = ?`)
+    .get(jobId) as { id: number; url: string | null; title: string; description: string | null; source: string | null; company: string | null } | undefined;
 
   if (!job) {
     console.error(`[probe] job ${jobId} not found`);
@@ -104,10 +78,6 @@ async function probe(jobId: number): Promise<void> {
     return;
   }
 
-  const profile = db
-    .prepare(`SELECT full_name, preferences_json FROM profile WHERE id = 1`)
-    .get() as { full_name: string | null; preferences_json: string | null } | undefined;
-
   // Clear existing probe results for this job before re-probing
   db.prepare(`DELETE FROM application_questions WHERE job_id = ?`).run(jobId);
 
@@ -115,76 +85,43 @@ async function probe(jobId: number): Promise<void> {
   const page = await browser.newPage();
 
   try {
-    const response = await page.goto(job.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    let customFields: Array<{ label: string; fieldType: string; name: string | null; id: string | null; index: number; options?: string[] }>;
 
-    if (!response || !response.ok()) {
-      console.log(`[probe] job ${jobId}: URL returned ${response?.status()} — skipping`);
-      return;
-    }
+    if (job.source === "ashby") {
+      console.log(`[probe] job ${jobId}: using Ashby adapter`);
+      customFields = await extractAshbyFields(page, job.url);
+    } else {
+      // Generic fallback — navigate to the raw job URL
+      const response = await page.goto(job.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      if (!response || !response.ok()) {
+        console.log(`[probe] job ${jobId}: URL returned ${response?.status()} — skipping`);
+        return;
+      }
+      await page.waitForTimeout(2000);
 
-    // Wait briefly for JS-rendered content
-    await page.waitForTimeout(2000);
-
-    type FieldInfo = {
-      label: string;
-      tag: string;
-      fieldType: string;
-      name: string | null;
-      id: string | null;
-      index: number;
-    };
-
-    // Extract all interactive form fields with their labels
-    const fields: FieldInfo[] = await page.evaluate(() => {
-      const results: FieldInfo[] = [];
-      const seen = new Set<string>();
-
-      const inputs = Array.from(document.querySelectorAll("input, textarea, select"));
-      inputs.forEach((el, index) => {
-        const input = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-        const inputType = (input as HTMLInputElement).type ?? "";
-
-        // Skip hidden, submit, button, file inputs
-        if (["hidden", "submit", "button", "file", "image", "reset"].includes(inputType)) return;
-
-        // Find associated label
-        let label = "";
-        const id = input.id;
-        if (id) {
-          const labelEl = document.querySelector(`label[for="${id}"]`);
-          if (labelEl) label = labelEl.textContent?.trim() ?? "";
-        }
-        if (!label) {
-          const closest = input.closest("label");
-          if (closest) label = closest.textContent?.trim() ?? "";
-        }
-        if (!label) {
-          // Walk up to find nearby label/legend/div text
-          const parent = input.parentElement;
-          if (parent) {
-            const labelEl = parent.querySelector("label, legend");
-            if (labelEl) label = labelEl.textContent?.trim() ?? "";
-          }
-        }
-
-        const name = input.name || null;
-        const fieldType = input.tagName.toLowerCase() === "textarea"
-          ? "textarea"
-          : input.tagName.toLowerCase() === "select"
-          ? "select"
-          : (input as HTMLInputElement).type || "text";
-
-        const dedupeKey = `${label}|${name}|${id}`;
-        if (seen.has(dedupeKey)) return;
-        seen.add(dedupeKey);
-
-        results.push({ label, tag: input.tagName.toLowerCase(), fieldType, name, id: id || null, index });
+      const fields = await page.evaluate(() => {
+        const results: Array<{ label: string; fieldType: string; name: string | null; id: string | null; index: number; tag: string }> = [];
+        const seen = new Set<string>();
+        Array.from(document.querySelectorAll("input, textarea, select")).forEach((el, index) => {
+          const input = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+          const inputType = (input as HTMLInputElement).type ?? "";
+          if (["hidden", "submit", "button", "file", "image", "reset"].includes(inputType)) return;
+          let label = "";
+          const id = input.id;
+          if (id) { const l = document.querySelector(`label[for="${id}"]`); if (l) label = l.textContent?.trim() ?? ""; }
+          if (!label) { const c = input.closest("label"); if (c) label = c.textContent?.trim() ?? ""; }
+          if (!label) { const p = input.parentElement; if (p) { const l = p.querySelector("label, legend"); if (l) label = l.textContent?.trim() ?? ""; } }
+          const name = input.name || null;
+          const fieldType = input.tagName.toLowerCase() === "textarea" ? "textarea" : input.tagName.toLowerCase() === "select" ? "select" : (input as HTMLInputElement).type || "text";
+          const key = `${label}|${name}|${id}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          results.push({ label, tag: input.tagName.toLowerCase(), fieldType, name, id: id || null, index });
+        });
+        return results;
       });
-
-      return results;
-    });
-
-    const customFields = fields.filter((f) => !isStandardField(f.label, f.name ?? ""));
+      customFields = fields.filter((f) => !isStandardField(f.label, f.name ?? ""));
+    }
 
     if (customFields.length === 0) {
       console.log(`[probe] job ${jobId}: no custom questions found`);
@@ -193,8 +130,6 @@ async function probe(jobId: number): Promise<void> {
 
     console.log(`[probe] job ${jobId}: found ${customFields.length} custom question(s)`);
 
-    const client = new Anthropic();
-
     const insert = db.prepare(
       `INSERT INTO application_questions (job_id, question, answer, field_type, field_selector)
        VALUES (?, ?, ?, ?, ?)`,
@@ -202,22 +137,12 @@ async function probe(jobId: number): Promise<void> {
 
     for (const field of customFields) {
       const question = field.label || field.name || "Unknown question";
-      const selector = buildSelector(field);
-      let answer: string | null = null;
+      const selector = field.fieldType === "radio" || field.fieldType === "checkbox"
+        ? `input[name="${field.name}"][type="${field.fieldType}"]`
+        : buildSelector({ tag: "input", name: field.name, id: field.id, index: field.index });
 
-      try {
-        answer = await generateAnswer(
-          client,
-          question,
-          { title: job.title, company: job.company ?? "", description: job.description },
-          profile ?? { full_name: null, preferences_json: null },
-        );
-      } catch (e) {
-        console.error(`[probe] failed to generate answer for "${question}":`, (e as Error).message);
-      }
-
-      insert.run(jobId, question, answer, field.fieldType, selector);
-      console.log(`[probe] stored: "${question}" (${field.fieldType}) → ${answer ? answer.slice(0, 60) + "..." : "null"}`);
+      insert.run(jobId, question, null, field.fieldType, selector);
+      console.log(`[probe] stored: "${question}" (${field.fieldType})`);
     }
 
     db.prepare(

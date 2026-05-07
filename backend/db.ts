@@ -88,24 +88,29 @@ function migrate(db: Database.Database) {
     .get() as { sql: string } | undefined;
   const requiredStatuses = ["'fetched'", "'prescored'", "'submitting'", "'submission_failed'"];
   if (jobsDdl && requiredStatuses.some((s) => !jobsDdl.sql.includes(s))) {
-    db.exec(`
-      BEGIN;
-      ALTER TABLE jobs RENAME TO jobs__old;
-    `);
-    // Recreate by re-running schema.sql (CREATE TABLE IF NOT EXISTS already ran above,
-    // but the rename made it absent) — import the canonical DDL by re-reading schema.
-    const schemaSql = readFileSync(SCHEMA_PATH, "utf8");
-    db.exec(schemaSql);
-    const oldCols = (db.prepare(`PRAGMA table_info(jobs__old)`).all() as Array<{ name: string }>)
-      .map((c) => c.name);
-    const newCols = (db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>)
-      .map((c) => c.name);
-    const shared = oldCols.filter((c) => newCols.includes(c)).join(",");
-    db.exec(`
-      INSERT INTO jobs (${shared}) SELECT ${shared} FROM jobs__old;
-      DROP TABLE jobs__old;
-      COMMIT;
-    `);
+    // Disable FK enforcement for the duration of the rebuild so that:
+    //   (a) ALTERing the jobs table doesn't trigger FK violations in referencing tables
+    //   (b) SQLite 3.26+ doesn't rewrite those tables' FK references to point at jobs__old
+    db.pragma("foreign_keys = OFF");
+    try {
+      db.exec(`BEGIN`);
+      db.exec(`ALTER TABLE jobs RENAME TO jobs__old`);
+      const schemaSql = readFileSync(SCHEMA_PATH, "utf8");
+      db.exec(schemaSql);
+      const oldCols = (db.prepare(`PRAGMA table_info(jobs__old)`).all() as Array<{ name: string }>)
+        .map((c) => c.name);
+      const newCols = (db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>)
+        .map((c) => c.name);
+      const shared = oldCols.filter((c) => newCols.includes(c)).join(",");
+      db.exec(`INSERT INTO jobs (${shared}) SELECT ${shared} FROM jobs__old`);
+      db.exec(`DROP TABLE jobs__old`);
+      db.exec(`COMMIT`);
+    } catch (e) {
+      db.exec(`ROLLBACK`);
+      throw e;
+    } finally {
+      db.pragma("foreign_keys = ON");
+    }
   }
 }
 
