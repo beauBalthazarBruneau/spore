@@ -339,9 +339,9 @@ gh pr create \
 🤖 Self-improvement agent — [SPORE-56](https://linear.app/beausideas/issue/SPORE-56)
 ```
 
-### 6f. Save experiment state
+### 6f. Save and commit experiment state
 
-Update the experiment JSON:
+Update the experiment JSON with PR details:
 ```json
 {
   "status": "pr_open",
@@ -350,14 +350,20 @@ Update the experiment JSON:
 }
 ```
 
-Save to `.claude/self-improvement/experiments/<exp-id>.json` **in the original repo**, not the worktree (the worktree will be cleaned up after the PR merges).
+Write it to the **worktree** and commit it alongside the code change:
 
 ```bash
-# Write the file from the original repo root
-cat > /Users/beau/Documents/dev/spore/.claude/self-improvement/experiments/<exp-id>.json << 'EOF'
+# From inside the worktree (../spore-<exp-id>)
+cat > .claude/self-improvement/experiments/<exp-id>.json << 'EOF'
 { ... }
 EOF
+
+git add .claude/self-improvement/experiments/<exp-id>.json
+git commit -m "[self-improve <exp-id>] Add experiment log"
+git push
 ```
+
+This keeps the experiment log and the code change in the same PR. When the PR merges, the JSON lands on main automatically — no manual follow-up needed.
 
 ---
 
