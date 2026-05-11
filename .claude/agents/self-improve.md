@@ -190,23 +190,30 @@ Synthesize: where is the biggest leak? What's the highest-volume fixable problem
 
 ## Step 4 — Pick an experiment
 
-Choose **one** improvement. Priority order:
+Choose **one** improvement. The goal is always **more volume without sacrificing approval rate** — surfacing more jobs that Beau would actually approve, not just more jobs.
 
-1. **Filter fixes** with high-volume rejection data backing (e.g. a location pattern causing >50 rejections/day that's plausibly wrong)
-2. **Title exclusion additions** — wrong-function titles reaching the LLM scorer (>20 jobs/day of one title pattern)
-3. **Score threshold adjustment** — cluster of jobs near the current threshold that look like good fits from their titles
-4. **Source-specific tuning** — a source with 0% pass-through for a diagnosable reason
+**Standard tier** (prefer when there's clear data backing):
+
+1. **Filter fixes** — a location/company/title pattern causing wrong-function or false rejections (>10 affected jobs in the window with plausible PM relevance)
+2. **Title exclusion additions** — wrong-function titles burning LLM tokens (>15 jobs in the window matching a clear non-PM pattern)
+3. **Prescore weight tuning** — a scoring signal that's miscalibrated: e.g. the seniority signal is over-penalizing "Senior PM" titles, or the keyword overlap signal is ignoring relevant synonyms. Edit `backend/prescore.ts`.
+4. **Score threshold adjustment** — a cluster of jobs near the current threshold that look like good fits from their titles
+5. **Source-specific tuning** — a source with 0% pass-through for a diagnosable reason
+
+**Big-bet tier** — use when the standard tier has no clear winner, OR every 3rd experiment (when the new experiment ID is divisible by 3):
+
+6. **New ATS source** — add an adapter in `backend/sources/` for an ATS used by companies that keep appearing in discovery but have no job data. Check `companies` table for `ats_slug` values with no corresponding fetched jobs. A new source can unlock tens of jobs per run; this is higher leverage than any filter tweak.
+7. **Scoring rubric change** — edit a specific criterion in `.claude/agents/score-jobs.md` (e.g. the compensation signal, the seniority rubric, or the company-stage preference). Make one targeted change, not a wholesale rewrite. Describe clearly what behavior you're changing and in which direction.
 
 Do NOT attempt:
 - Schema changes (`schema.sql`)
-- New ATS sources
-- Scoring rubric rewrites (the agent prompt in `score-jobs.md` — threshold changes only)
 - Any changes to `package.json`, `frontend/`, or `data/`
+- `backend/mcp/server.ts`
 
 Document your choice:
-- `problem`: what the data shows (be specific — include counts)
+- `problem`: what the data shows (be specific — include counts, or for big-bets, qualitative reasoning about what's being missed)
 - `hypothesis`: what you'll change and why you expect it to help
-- `change.type`: one of `filter | threshold | keywords | source`
+- `change.type`: one of `filter | threshold | keywords | prescore | source | rubric`
 - `change.description`: what file and what specifically changes
 
 Assign an experiment ID by reading existing logs and incrementing: if the last is `exp-003.json`, the next is `exp-004`.
@@ -231,9 +238,12 @@ npx tsx backend/self-improve/run-replay.ts \
 
 **Evaluate the ReplayResult:**
 
-- **Quantity**: `would_surface` vs `baseline_surfaced`. A meaningful improvement surfaces meaningfully more jobs. A result that would surface >10× the baseline is a red flag — the change is too loose.
-- **Quality**: Read the `titles` array. If more than ~30% look like wrong-function (not PM roles), verdict is `no_ship`.
+The goal is volume without sacrificing approval rate. Wrong-function jobs that slip through hard filters are re-rejected by the LLM scorer anyway — the real cost is LLM tokens (~$0.01/job), not quality. Approval rate is the signal that matters.
+
+- **Volume**: `would_surface` vs `baseline_surfaced`. A change that surfaces more PM-track jobs is good. A change that surfaces only wrong-function junk is a no-ship. There is no hard ceiling on volume — if the titles look right, more is better.
+- **Quality**: Read the `titles` array. Estimate what fraction are plausible PM roles (including adjacent roles Beau might approve: Chief of Staff, Strategy, Ops at a startup). If >60% look like wrong-function with no PM relevance, verdict is `no_ship`. 30–60% wrong-function is acceptable — the LLM scorer handles it.
 - **Score distribution** (threshold experiments): most newly promoted jobs should cluster in 35–50, not at the very bottom.
+- **Big-bet experiments** (new source, rubric change): skip the replay tool — it only models hard filters and threshold. Instead, reason qualitatively: what companies or job types are currently invisible to the pipeline, and does this change make them visible? Document your reasoning in `quality_signals`.
 
 Write `proxy_results`:
 ```json
@@ -268,13 +278,17 @@ ln -s /Users/beau/Documents/dev/spore/node_modules node_modules
 Edit the relevant file:
 - **Filter / keywords changes**: `backend/filters.ts` or update `criteria.exclusions.title_keywords` in the DB via `scripts/add-title-exclusions.ts` pattern
 - **Threshold change**: update `threshold: N` in `.claude/agents/score-jobs.md` (the `upsert_scored` call and the "do not relax below" rule)
+- **Prescore weight tuning**: edit the signal weights or keyword lists in `backend/prescore.ts`
+- **New ATS source**: add `backend/sources/<ats-name>.ts` implementing `SourceAdapter`, register it in `backend/sources/index.ts`, add the `ats_slug` to any affected companies via `upsert_company`
+- **Scoring rubric change**: edit the specific criterion section in `.claude/agents/score-jobs.md` — one targeted change, not a wholesale rewrite
 
 Keep the change minimal and exactly scoped to what the experiment tests. Do not refactor surrounding code.
 
 ### 6c. Run tests
 
 ```bash
-./node_modules/.bin/vitest run backend/filters.test.ts
+# Always run the full backend test suite
+./node_modules/.bin/vitest run backend/
 ```
 
 Must pass. If tests fail, fix them (adding cases for the new behavior is fine; changing existing passing assertions is not).
