@@ -34,6 +34,26 @@ const includesAny = (hay: string, needles: string[] | undefined) =>
 // work-from-anywhere postings.
 const BROAD_US_PATTERNS = /^(united states(?: of america)?|u\.?s\.?a?\.?|north america)$/i;
 
+// Aliases for accepted city names. When a user lists "New York, NY" in their accepted
+// locations, ATS boards often emit shorter or alternate forms ("NYC", "US-NYC",
+// "DC, SF, NYC", "NYC-Privy"). Each canonical city (after state-suffix stripping and
+// lowercasing) maps to a list of short aliases that should also match. Aliases are
+// matched with word boundaries to avoid spurious substring hits (e.g. "ny" inside
+// "company"); the canonical name still uses substring matching as before.
+const CITY_ALIASES: Record<string, string[]> = {
+  "new york": ["nyc"],
+};
+
+function cityMatches(loc: string, city: string): boolean {
+  if (loc.includes(city)) return true;
+  const aliases = CITY_ALIASES[city];
+  if (!aliases) return false;
+  return aliases.some((alias) => {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(loc);
+  });
+}
+
 // Tokens that appear in hybrid location strings but are not city names.
 // Used to detect "Hybrid" with no city context ("Hybrid; In-Office", "Distributed; Hybrid").
 const HYBRID_NON_CITY_TOKENS = new Set([
@@ -106,7 +126,7 @@ export function applyHardFilters(p: RawPosting, criteria: Criteria): FilterResul
       const acceptedCities = criteria.locations
         .filter((l) => !/remote/i.test(l))
         .map((l) => l.replace(/,?\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|USA?)$/i, "").trim().toLowerCase());
-      const locMatch = acceptedCities.some((city) => loc.includes(city));
+      const locMatch = acceptedCities.some((city) => cityMatches(loc, city));
       if (!locMatch && !isRemote) {
         return { passed: false, reason: `location '${p.location}' not in accepted locations` };
       }
