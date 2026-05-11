@@ -1,0 +1,24 @@
+{
+  "id": "exp-003",
+  "created_at": "2026-05-11",
+  "problem": "Over the last 14 days, 12 Engineering Manager jobs reached the LLM scorer and were immediately rejected as wrong-function. The title_keywords exclusion list does not include 'engineering manager', so these jobs pass the hard filter and waste an LLM scoring call each. Across all-time data: 203 Engineering Manager jobs fetched, all rejected, 0 approvals ever.",
+  "hypothesis": "Adding 'engineering manager' to criteria.exclusions.title_keywords via scripts/add-title-exclusions.ts will catch these jobs at the hard-filter stage (pre-LLM), eliminating ~12 wasted scoring calls per 14-day cycle. The includesAny(title, ex.title_keywords) check in backend/filters.ts uses substring matching so 'engineering manager' will match all variants ('Engineering Manager II', 'Senior Engineering Manager', etc.).",
+  "change": {
+    "type": "keywords",
+    "description": "Add 'engineering manager' to NEW_EXCLUSIONS in scripts/add-title-exclusions.ts. After merge, operator runs 'npx tsx scripts/add-title-exclusions.ts' to apply the keyword to the live profile criteria_json."
+  },
+  "proxy_results": {
+    "baseline_surfaced_per_day": 1.07,
+    "baseline_filter_pass": 200,
+    "experiment_filter_pass": 188,
+    "delta": -12,
+    "lookback_days": 14,
+    "total_candidates": 631,
+    "quality_signals": "The 12 jobs removed from the LLM queue are all Engineering Manager titles (confirmed by comparing baseline replay titles vs experiment replay titles). No PM titles are affected. 203 all-time EM rejections with 0 approvals confirms zero false-positive risk. The 188 jobs still passing the filter include 2 legitimate PM roles ('Product Manager, Verticals', 'Product Manager, Analytics') that remain surfaced.",
+    "agent_verdict": "ship",
+    "agent_reasoning": "Zero false-positive risk (203/203 EM historical rejections with 0 approvals), precise keyword with clear substring semantics, eliminates 12 wasted LLM calls per 14-day cycle. Cost savings are modest (~$0.03/cycle) but the structural improvement is sound. Tests pass."
+  },
+  "status": "pr_open",
+  "pr_url": "https://github.com/beauBalthazarBruneau/spore/pull/46",
+  "pr_number": 46
+}
