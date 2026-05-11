@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -32,6 +32,11 @@ const COLUMN_LABELS: Record<JobStatus, string> = {
 // ---------------------------------------------------------------------------
 // Simple markdown → HTML (no external dep needed for basic formatting)
 // ---------------------------------------------------------------------------
+function renderContent(content: unknown): string {
+  if (typeof content !== "string" || !content) return "";
+  return content.includes("</") ? content : mdToHtml(content);
+}
+
 function mdToHtml(md: unknown): string {
   if (typeof md !== "string") return "";
   return md
@@ -405,6 +410,7 @@ function Drawer({
   const [newRoundLabel, setNewRoundLabel] = useState("");
   const [openRoundId, setOpenRoundId] = useState<number | null>(null);
   const [editingRoundId, setEditingRoundId] = useState<number | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<"details" | "interview">("details");
 
   // Load application questions for tailored+ jobs
@@ -457,10 +463,11 @@ function Drawer({
   async function saveRound(roundId: number) {
     const draft = roundDrafts[roundId];
     if (!draft) return;
+    const prepMd = editorRef.current?.innerHTML ?? draft.prep_md;
     const res = await fetch(`/api/jobs/${job.id}/interview-rounds`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roundId, label: draft.label, prepMd: draft.prep_md }),
+      body: JSON.stringify({ roundId, label: draft.label, prepMd }),
     });
     if (!res.ok) return;
     const updated = await res.json() as InterviewRound;
@@ -770,11 +777,13 @@ function Drawer({
                                 value={roundDrafts[round.id]?.label ?? round.label}
                                 onChange={(e) => setRoundDrafts((d) => ({ ...d, [round.id]: { ...d[round.id], label: e.target.value } }))}
                               />
-                              <textarea
-                                className="w-full h-64 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-200 font-mono resize-y focus:outline-none focus:border-zinc-500"
-                                placeholder="Prep notes, questions to ask, talking points..."
-                                value={roundDrafts[round.id]?.prep_md ?? ""}
-                                onChange={(e) => setRoundDrafts((d) => ({ ...d, [round.id]: { ...d[round.id], prep_md: e.target.value } }))}
+                              <div
+                                key={`editor-${round.id}`}
+                                ref={editorRef}
+                                contentEditable
+                                suppressContentEditableWarning
+                                className="min-h-64 bg-zinc-900 border border-zinc-700 rounded p-3 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500 prose prose-invert prose-sm max-w-none"
+                                dangerouslySetInnerHTML={{ __html: renderContent(round.prep_md) }}
                               />
                               <div className="flex items-center gap-2">
                                 <button
@@ -802,20 +811,37 @@ function Drawer({
                             </>
                           ) : (
                             <>
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex gap-2">
+                                  {round.prep_md && (
+                                    <button
+                                      className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-2 py-0.5 rounded"
+                                      onClick={() => {
+                                        const html = renderContent(round.prep_md);
+                                        navigator.clipboard.write([
+                                          new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }) }),
+                                        ]);
+                                      }}
+                                    >
+                                      Copy
+                                    </button>
+                                  )}
+                                  <button
+                                    className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-2 py-0.5 rounded"
+                                    onClick={() => setEditingRoundId(round.id)}
+                                  >
+                                    Edit
+                                  </button>
+                                </div>
+                              </div>
                               {round.prep_md ? (
                                 <div
                                   className="prose prose-invert prose-sm max-w-none text-zinc-300"
-                                  dangerouslySetInnerHTML={{ __html: mdToHtml(round.prep_md) }}
+                                  dangerouslySetInnerHTML={{ __html: renderContent(round.prep_md) }}
                                 />
                               ) : (
                                 <p className="text-sm text-zinc-500 italic">No prep notes yet.</p>
                               )}
-                              <button
-                                className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-2 py-0.5 rounded"
-                                onClick={() => setEditingRoundId(round.id)}
-                              >
-                                Edit
-                              </button>
                             </>
                           )}
                         </div>
