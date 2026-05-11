@@ -1,0 +1,22 @@
+{
+  "id": "exp-001",
+  "created_at": "2026-05-11",
+  "problem": "7 jobs in 14 days were rejected by the location filter despite being in NYC: location strings 'NYC' (1), 'NYC-Privy' (1), 'US-NYC' (1), 'DC, SF, NYC' (1), and 'NY' (3). The accepted_locations list includes 'New York, NY' which after state-suffix stripping becomes 'new york'. The fuzzy city match `loc.includes('new york')` does not match 'nyc' or bare 'ny'. Of the 7 affected jobs, only 1 was a real PM-track role ('Product Manager, Startup Products' at NYC); the rest were wrong-function (Brand Designer, Engineering Manager, Corporate Communications, GTM Talent Acquisition).",
+  "hypothesis": "Adding 'NYC' to criteria.locations would treat 'NYC' and its compound forms ('NYC-Privy', 'US-NYC', 'DC, SF, NYC') as accepted, unblocking ~1 real PM role per 14 days. Adding bare 'NY' is unsafe because the two-letter substring 'ny' collides with common English words once city matching uses includes() (replay confirmed: 'NY' surfaces 134 extra agent-rejected jobs via spurious matches in titles/descriptions... actually via stripped accepted-city becoming 'ny' and loc-stripping making things like 'New York' contain 'ny' fine, but the broader issue was many already-passing-filter jobs).",
+  "change": {
+    "type": "filter",
+    "description": "Add 'NYC' to profile.criteria.locations (no code change to filters.ts). Tested via run-replay with --criteria '{\"locations\":[\"New York, NY\",\"Remote\",\"NYC\"]}'."
+  },
+  "proxy_results": {
+    "baseline_surfaced_per_day": 1.07,
+    "experiment_surfaced": 200,
+    "lookback_days": 14,
+    "total_candidates": 631,
+    "location_rejected_unblocked": 4,
+    "real_pm_roles_unblocked": 1,
+    "quality_signals": "The replay's would_surface (200) is misleadingly inflated. Only 4 jobs were originally rejected for the location reason and would now pass hard filters; the remaining 196 are jobs originally rejected by the LLM agent for fit reasons that incidentally still pass hard filters. Of the 4 unblocked location-rejected jobs, only 1 is a legitimate PM role ('Product Manager, Startup Products' at NYC). The other 3 are wrong-function and would be re-rejected by the LLM scorer.",
+    "agent_verdict": "no_ship",
+    "agent_reasoning": "Expected real impact is roughly 1 legitimate PM role unblocked per 14 days — too small to justify a change, especially since it would also pass through 3 wrong-function NYC jobs per cycle that consume LLM tokens before being rejected. The accepted_locations canonicalization belongs in code (e.g., a small alias table in filters.ts mapping 'NYC' → 'new york') rather than asking the user to enumerate every NY variant in their profile. Flagging for a future code-change experiment that does this properly rather than shipping the criteria patch."
+  },
+  "status": "proxy_failed"
+}

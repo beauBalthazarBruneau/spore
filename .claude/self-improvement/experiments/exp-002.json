@@ -1,0 +1,26 @@
+{
+  "id": "exp-002",
+  "created_at": "2026-05-11",
+  "problem": "Over the last 14 days, 7 jobs were rejected by the location filter despite being in NYC: locations like 'NYC', 'NYC-Privy', 'US-NYC', 'DC, SF, NYC'. The accepted-location 'New York, NY' (stripped to 'new york') is matched via loc.includes('new york'), which never matches the bare 'nyc' form. exp-001 evaluated adding 'NYC' to the user's criteria.locations and rejected that approach because it shifts alias-handling responsibility to per-user profile data; the right place to canonicalize city forms is in code.",
+  "hypothesis": "Adding a small CITY_ALIASES map in backend/filters.ts ('new york' → ['nyc']), matched with word boundaries so 'nyc' does not collide with substrings inside other words, unblocks the NYC variants without requiring users to enumerate aliases in their profile. Word boundaries address the substring-collision concern that killed the bare 'NY' variant in exp-001.",
+  "change": {
+    "type": "filter",
+    "description": "Code change to backend/filters.ts: add CITY_ALIASES map and cityMatches() helper. For each canonical accepted city, also test word-boundary regex against each alias. Currently maps 'new york' → ['nyc'] only."
+  },
+  "proxy_results": {
+    "baseline_surfaced_per_day": 1.07,
+    "experiment_surfaced": 200,
+    "lookback_days": 14,
+    "total_candidates": 631,
+    "location_rejected_in_window": 184,
+    "location_rejected_unblocked": 4,
+    "real_pm_roles_unblocked": 1,
+    "quality_signals": "Replay's would_surface (200) is dominated by jobs previously rejected by the LLM, not by hard filters — same artifact as exp-001. The actual delta of this code change vs unchanged code is 4 location-rejected jobs that now pass: 'Product Manager, Startup Products' (legit PM, real unblock), 'Brand Designer, Privy' (wrong-function), 'Engineering Manager, Managed Payments' (wrong-function), 'Corporate Communications' (wrong-function). LLM will re-reject the 3 wrong-function jobs.",
+    "agent_verdict": "ship",
+    "agent_reasoning": "Same trade-off as exp-001 (1 real PM unblocked vs 3 wrong-function LLM scores per 14 days), but implemented at the right layer. Code-side alias matching is centralized (every user benefits), uses word-boundary matching (safer than bare substring), and generalizes to future aliases. Marginal LLM token cost is trivial (~3 cents/cycle). Structural cleanliness justifies shipping even though the raw approval-rate impact is small."
+  },
+  "status": "merged_awaiting_swipes",
+  "merge_date": "2026-05-11",
+  "pr_url": "https://github.com/beauBalthazarBruneau/spore/pull/45",
+  "pr_number": 45
+}
