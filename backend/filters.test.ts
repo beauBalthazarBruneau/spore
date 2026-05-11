@@ -90,6 +90,22 @@ describe("applyHardFilters", () => {
     }
   });
 
+  it("matches 'NYC' alias against 'New York, NY'", () => {
+    const locs = ["New York, NY", "Remote"];
+    for (const nyc of ["NYC", "NYC-Privy", "US-NYC", "DC, SF, NYC", "Hybrid - NYC"]) {
+      const r = applyHardFilters({ ...base, location: nyc, remote: undefined }, { locations: locs });
+      expect(r.passed, `expected '${nyc}' to pass`).toBe(true);
+    }
+  });
+
+  it("does not match 'NYC' as a substring inside another word", () => {
+    const r = applyHardFilters(
+      { ...base, location: "Anycity, CA", remote: "onsite" },
+      { locations: ["New York, NY"] },
+    );
+    expect(r.passed).toBe(false);
+  });
+
   it("skips location filter when no locations configured", () => {
     const r = applyHardFilters(
       { ...base, location: "Tokyo, Japan" },
