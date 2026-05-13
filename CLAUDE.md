@@ -15,6 +15,7 @@ Root (backend / orchestrators / scripts):
 - `npx vitest run backend/prescore.test.ts` — run a single backend test file
 - `npx tsx backend/orchestrate.ts --name discover-companies [--months 3] [--rounds seed,a,b] [--sector ai,devtools]` — scrape funding news for recently-funded companies, output candidates (does not write to DB)
 - `npx tsx backend/orchestrate.ts --name discover-jobs-by-companies` — fetch postings from watched companies' ATS boards → `status='fetched'`
+- `npx tsx backend/orchestrate.ts --name mygreenhouse` — cross-company Greenhouse search via the authenticated MyGreenhouse portal → `status='fetched'`. Requires `data/mygreenhouse-session.json`; refresh via the `mygreenhouse-login` agent when `auth_expired:true` shows up in the report.
 - `npx tsx backend/orchestrate.ts --name prescore` — deterministic prescore over `status='fetched'` → `status='prescored'`
 - `npx tsx backend/reports/score-calibration.ts` — print prescore and LLM-score calibration vs user approvals (bucketed approval rate + Pearson correlation)
 - `npx tsx backend/mcp/server.ts` — run the `spore` MCP server over stdio (normally launched by `.mcp.json`)
@@ -78,6 +79,7 @@ Per-ATS adapters implement `SourceAdapter.search(opts) → RawPosting[]`: `green
 
 - **`discover-companies`** (`backend/fetchers/discover/`) — scrapes TechCrunch + Google News RSS feeds for recently-funded companies (Seed/A/B by default). Outputs candidates but does **not** write to the DB — the `add-companies` skill handles enrichment and upsert. Supports `--months`, `--rounds`, and `--sector` CLI flags. Dedupes against previously surfaced candidates via `discovered_candidates` table.
 - **`discover-jobs-by-companies`** (`backend/fetchers/watched.ts`) — fetches jobs from watched companies' ATS boards, applies hard filters, writes survivors as `status='fetched'`. Also handles stale job cleanup (marks removed postings) and auto-archives companies with 5+ consecutive empty fetches.
+- **`mygreenhouse`** (`backend/fetchers/mygreenhouse.ts`) — cross-company Greenhouse search via the authenticated `my.greenhouse.io` candidate portal. Reads session cookies from `data/mygreenhouse-session.json` (created by `scripts/mygreenhouse-auth.ts`, driven by the `mygreenhouse-login` agent), calls Inertia.js API per title from `profile.criteria.titles`, paginates, applies hard filters, inserts as `source='mygreenhouse'`. Returns `auth_expired:true` when the session is dead so the orchestrator can flag a re-login is needed.
 
 ### Frontend (`frontend/`)
 
@@ -86,6 +88,7 @@ Next.js 14 App Router on port 3100. Pages: `/swipe`, `/board`, `/companies`, `/p
 ### Skills and agents
 
 - `.claude/agents/score-jobs.md` — the LLM scoring loop; the canonical example of "how an agent talks to the DB only via MCP tools"
+- `.claude/agents/mygreenhouse-login.md` — refreshes the MyGreenhouse session cookies. Spawns `scripts/mygreenhouse-auth.ts` (Playwright), pulls the security code from Gmail via MCP, drops it into `data/mygreenhouse-code.txt` so the script can finish the email-code login flow.
 - `.claude/skills/{onboard,add-jobs,add-companies}/SKILL.md` — user-invocable skills exposed via the Skill tool
 
 ## Conventions worth knowing
