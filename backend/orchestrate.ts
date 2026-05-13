@@ -11,6 +11,7 @@
 import { getDb } from "./db";
 import * as discoverJobsByCompanies from "./fetchers/discover-jobs-by-companies";
 import * as discoverJobsGeneric from "./fetchers/discover-jobs-generic";
+import * as mygreenhouse from "./fetchers/mygreenhouse";
 import * as prescore from "./prescore";
 import * as discoverCompanies from "./fetchers/discover-companies";
 
@@ -33,6 +34,7 @@ const fetchers: Record<string, Stage> = {
   "discover-companies": discoverCompaniesStage,
   "discover-jobs-by-companies": discoverJobsByCompanies,
   "discover-jobs-generic": discoverJobsGeneric,
+  mygreenhouse,
   prescore,
 };
 
