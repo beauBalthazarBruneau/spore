@@ -38,7 +38,8 @@ function linkIcon(label: string): string {
   return "\\faLink";
 }
 
-export function jsonToTex(resume: ResumeJson): string {
+export function jsonToTex(resume: ResumeJson, opts: { paperHeight?: string } = {}): string {
+  const paperHeight = opts.paperHeight ?? "20in";
   const { name, contact, summary, experience, education, projects, presentations, skills } = resume;
 
   // Contact icon row — mirrors master_resume.tex header style
@@ -143,9 +144,9 @@ ${bullets}
     skillsTex = `\\section{Skills}\n \\begin{itemize}[leftmargin=0.0in, label={}]\n    \\small{\\item{\n${rows}\n    }}\n \\end{itemize}\n`;
   }
 
-  return `\\documentclass[letterpaper,11pt]{article}
+  return `\\documentclass[11pt]{article}
 
-\\usepackage[top=0.375in,left=0.375in,right=0.375in,bottom=0.25in]{geometry}
+\\usepackage[top=0.375in,left=0.375in,right=0.375in,bottom=0in,paperheight=${paperHeight},paperwidth=8.5in,noheadfoot]{geometry}
 \\usepackage{titlesec}
 \\usepackage[usenames,dvipsnames]{color}
 \\usepackage{enumitem}
@@ -192,6 +193,8 @@ ${educationTex}
 ${projectsTex}
 ${presentationsTex}
 ${skillsTex}
+
+\\AtEndDocument{\\typeout{SPORE_CONTENT_HEIGHT=\\the\\pagetotal}}
 
 \\end{document}
 `;
@@ -241,7 +244,42 @@ export async function renderPdf(source: string): Promise<Buffer> {
 // Public API
 // ---------------------------------------------------------------------------
 
+const TOP_MARGIN_IN = 0.375;
+const BOTTOM_MARGIN_IN = 0.15;
+const PT_PER_IN = 72.27; // LaTeX points per inch
+
+async function measureContentHeight(tex: string): Promise<number> {
+  const tmpDir = `/tmp/spore-measure-${randomUUID()}`;
+  mkdirSync(tmpDir, { recursive: true });
+  const texPath = join(tmpDir, "resume.tex");
+  try {
+    writeFileSync(texPath, tex, "utf8");
+    let stdout = "";
+    try {
+      const result = await execFileAsync("pdflatex", [
+        "-interaction=nonstopmode",
+        `-output-directory=${tmpDir}`,
+        texPath,
+      ]);
+      stdout = result.stdout;
+    } catch (e: unknown) {
+      stdout = (e as { stdout?: string }).stdout ?? "";
+    }
+    const match = stdout.match(/SPORE_CONTENT_HEIGHT=([\d.]+)pt/);
+    if (!match) throw new Error("pdflatex did not emit SPORE_CONTENT_HEIGHT");
+    return parseFloat(match[1]) / PT_PER_IN;
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 export async function renderResumePdf(resume: ResumeJson): Promise<Buffer> {
-  const tex = jsonToTex(resume);
-  return renderPdf(tex);
+  // Pass 1: compile with oversized paper to measure actual content height
+  const measureTex = jsonToTex(resume, { paperHeight: "20in" });
+  const contentHeightIn = await measureContentHeight(measureTex);
+
+  // Pass 2: render at exact height = top margin + content + bottom margin
+  const finalHeightIn = TOP_MARGIN_IN + contentHeightIn + BOTTOM_MARGIN_IN;
+  const finalTex = jsonToTex(resume, { paperHeight: `${finalHeightIn.toFixed(4)}in` });
+  return renderPdf(finalTex);
 }
