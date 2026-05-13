@@ -22,6 +22,9 @@ const NEW_EXCLUSIONS = [
   "recruiter",
   "solutions consultant",
   "accountant",
+  // exp-003: engineering manager titles reached the LLM 12 times in 14 days, all
+  // immediately rejected as wrong-function. 203 all-time EM rejections, 0 approvals.
+  "engineering manager",
 ];
 
 const db = getDb();
