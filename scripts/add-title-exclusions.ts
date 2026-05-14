@@ -25,6 +25,20 @@ const NEW_EXCLUSIONS = [
   // exp-003: engineering manager titles reached the LLM 12 times in 14 days, all
   // immediately rejected as wrong-function. 203 all-time EM rejections, 0 approvals.
   "engineering manager",
+  // exp-004: 447 prescored jobs in the last 14 days matched these wrong-function
+  // titles (driven by a 5/13 cross-company fetch deluge). Historical approval
+  // rates across all-time: instructional designer 0/144, content writer 0/71,
+  // ai trainer 0/108, payroll 0/86, data architect 0/16, account manager 0/240,
+  // devops engineer 0/55, technical account manager 0/49. Zero false-positive
+  // risk; catches the deluge at the hard filter before prescore+LLM cost.
+  "instructional designer",
+  "content writer",
+  "ai trainer",
+  "payroll",
+  "data architect",
+  "account manager",
+  "devops engineer",
+  "technical account manager",
 ];
 
 const db = getDb();
