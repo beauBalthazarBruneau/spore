@@ -1,0 +1,25 @@
+{
+  "id": "exp-004",
+  "created_at": "2026-05-13",
+  "problem": "Over the last 14 days, 447 prescored jobs matched 8 wrong-function title patterns not in the current exclusion list: instructional designer (137), content writer (70), ai trainer (17+), payroll (40+), data architect (9), account manager (15+), devops engineer (8+), technical account manager (8+). A 5/13 mygreenhouse fetch returned 13320 jobs in a single run; 3082 reached prescored status with overwhelmingly wrong-function titles. All-time approval rate across these 8 keywords is 0/669 jobs.",
+  "hypothesis": "Adding 'instructional designer', 'content writer', 'ai trainer', 'payroll', 'data architect', 'account manager', 'devops engineer', 'technical account manager' to NEW_EXCLUSIONS in scripts/add-title-exclusions.ts catches them at the hard-filter stage before prescore+LLM cost. Substring matching in includesAny() handles variants (e.g. 'Senior Account Manager', 'Payroll Specialist Lead - Poland', 'AI Trainer - Audiologists'). Zero false-positive risk based on historical approvals.",
+  "change": {
+    "type": "keywords",
+    "description": "Append 8 title keywords to NEW_EXCLUSIONS in scripts/add-title-exclusions.ts. After merge, operator runs 'npx tsx scripts/add-title-exclusions.ts' to apply to live profile criteria_json."
+  },
+  "proxy_results": {
+    "baseline_surfaced_per_day": 3.2,
+    "experiment_filter_pass": 207,
+    "baseline_filter_pass": 210,
+    "delta_in_replay": -3,
+    "direct_prescored_match_count": 447,
+    "lookback_days": 14,
+    "total_candidates": 11065,
+    "quality_signals": "Replay's would_surface delta is small (210->207) because the replay tool operates on already-rejected jobs; the real impact is on prescored/new jobs, where 447 jobs in the same window match the new patterns and would have been caught at filter time. All matched titles are unambiguously non-PM: B2B Content Writer, Instructional Designer variants, Payroll Specialist Lead, Account Manager variants, DevOps Engineer, Technical Account Manager, AI Trainer roles. Historical approval rate 0/669 across all 8 keywords. The 'solutions engineer' keyword was considered but excluded because 1/264 had an approval ('AI Solutions Engineer' tailored).",
+    "agent_verdict": "ship",
+    "agent_reasoning": "Zero false-positive risk (0 approvals across 669 historical jobs covering all 8 patterns), eliminates ~447 wasted downstream operations per 14-day window, directly addresses the 5/13 deluge that flooded prescored with wrong-function jobs. Cost savings are meaningful at scale: if even a fraction of the 3082 prescored jobs from 5/13 advance to LLM scoring at ~$0.01 each, this saves multiple dollars per fetch cycle on top of the structural cleanliness. Tests pass."
+  },
+  "status": "pr_open",
+  "pr_url": "https://github.com/beauBalthazarBruneau/spore/pull/49",
+  "pr_number": 49
+}
