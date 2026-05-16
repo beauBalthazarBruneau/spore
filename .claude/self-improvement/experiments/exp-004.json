@@ -19,7 +19,8 @@
     "agent_verdict": "ship",
     "agent_reasoning": "Zero false-positive risk (0 approvals across 669 historical jobs covering all 8 patterns), eliminates ~447 wasted downstream operations per 14-day window, directly addresses the 5/13 deluge that flooded prescored with wrong-function jobs. Cost savings are meaningful at scale: if even a fraction of the 3082 prescored jobs from 5/13 advance to LLM scoring at ~$0.01 each, this saves multiple dollars per fetch cycle on top of the structural cleanliness. Tests pass."
   },
-  "status": "pr_open",
+  "status": "merged_awaiting_swipes",
+  "merge_date": "2026-05-15",
   "pr_url": "https://github.com/beauBalthazarBruneau/spore/pull/49",
   "pr_number": 49
 }
