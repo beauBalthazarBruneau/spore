@@ -20,6 +20,6 @@
     "agent_reasoning": "Highest-volume fixable leak in the current pipeline (615 jobs/14d, vs exp-003's 12 EM jobs/cycle). Zero false-positive risk: 0/619 'tech lead' jobs ever approved or surfaced, and every distinct title is an engineering role. Precise substring keyword catches all variants. Eliminates 145 pending prescore+LLM scoring calls immediately plus an ongoing ~600/cycle going forward, meaningful at the cross-company fetch scale seen on 5/13-5/14. Same proven pattern and right layer as exp-003/exp-004."
   },
   "status": "pr_open",
-  "pr_url": "PENDING",
-  "pr_number": 0
+  "pr_url": "https://github.com/beauBalthazarBruneau/spore/pull/50",
+  "pr_number": 50
 }
