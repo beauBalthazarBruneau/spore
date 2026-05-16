@@ -39,6 +39,13 @@ const NEW_EXCLUSIONS = [
   "account manager",
   "devops engineer",
   "technical account manager",
+  // exp-005: 615 'tech lead' titles fetched in the last 14 days (145 awaiting an
+  // LLM scoring call, 470 already rejected). Top two non-score agent-rejection
+  // reasons in the window are 'Engineering Tech Lead role, not Product Manager'
+  // and 'Tech Lead engineering role, not PM'. All-time: 0/619 ever approved or
+  // surfaced; every distinct 'tech lead' title is an engineering role. Substring
+  // matching catches all variants (Tech Lead Manager, Frontend Tech Lead, etc.).
+  "tech lead",
 ];
 
 const db = getDb();
