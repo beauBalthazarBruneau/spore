@@ -1,0 +1,25 @@
+{
+  "id": "exp-005",
+  "created_at": "2026-05-15",
+  "problem": "Over the last 14 days, 615 jobs with 'tech lead' in the title were fetched. 145 are currently sitting in 'prescored' status awaiting an LLM scoring call, and 470 were already rejected — the top two non-score agent-rejection reasons in the window are 'Engineering Tech Lead role, not Product Manager' (59) and 'Tech Lead engineering role, not PM' (50). The title_keywords exclusion list has 'Forward deployed' but not 'tech lead', so every Tech Lead variant passes the hard filter and consumes a prescore + LLM scoring call before being rejected as a wrong-function engineering role. All-time: 619 'tech lead' jobs fetched, 0 ever approved or surfaced.",
+  "hypothesis": "Adding 'tech lead' to criteria.exclusions.title_keywords via scripts/add-title-exclusions.ts catches these jobs at the hard-filter stage (pre-prescore, pre-LLM). The includesAny(title, ex.title_keywords) check in backend/filters.ts uses substring matching, so 'tech lead' matches all variants ('Tech Lead, Android Core Product', 'Staff Software Engineer, Tech Lead', 'Frontend Tech Lead', 'Tech Lead Manager', etc.). Zero false-positive risk: every distinct 'tech lead' title inspected is an engineering role, and 0/619 were ever approved.",
+  "change": {
+    "type": "keywords",
+    "description": "Add 'tech lead' to NEW_EXCLUSIONS in scripts/add-title-exclusions.ts. After merge, operator runs 'npx tsx scripts/add-title-exclusions.ts' to apply the keyword to the live profile criteria_json."
+  },
+  "proxy_results": {
+    "baseline_surfaced_per_day": 2.36,
+    "experiment_surfaced": 736,
+    "baseline_surfaced": 33,
+    "lookback_days": 14,
+    "total_candidates": 18154,
+    "direct_tech_lead_match_count": 615,
+    "tech_lead_prescored_awaiting_llm": 145,
+    "quality_signals": "The replay tool's would_surface (736 vs baseline 33) is inflated because it models hard-filter pass-through over already-rejected jobs — most of those 736 are LLM-rejected jobs that incidentally still pass hard filters, the same artifact documented in exp-003 and exp-004. The real impact is measured directly: 615 'tech lead' jobs in the 14-day window, of which 145 currently sit in 'prescored' awaiting an LLM call and 470 were already rejected. All distinct 'tech lead' titles inspected are unambiguously engineering roles (Tech Lead Android/Frontend/Backend, Tech Lead Manager, Staff Software Engineer/Tech Lead). All-time approval/surface rate is 0/619.",
+    "agent_verdict": "ship",
+    "agent_reasoning": "Highest-volume fixable leak in the current pipeline (615 jobs/14d, vs exp-003's 12 EM jobs/cycle). Zero false-positive risk: 0/619 'tech lead' jobs ever approved or surfaced, and every distinct title is an engineering role. Precise substring keyword catches all variants. Eliminates 145 pending prescore+LLM scoring calls immediately plus an ongoing ~600/cycle going forward, meaningful at the cross-company fetch scale seen on 5/13-5/14. Same proven pattern and right layer as exp-003/exp-004."
+  },
+  "status": "pr_open",
+  "pr_url": "https://github.com/beauBalthazarBruneau/spore/pull/50",
+  "pr_number": 50
+}
